@@ -26,21 +26,19 @@ const iconOptions = [
 ]
 
 // Get all tasks
-const tasks = computed(() => {
-  return tasksStore.tasks
-})
+const tasks = computed(() => tasksStore.tasks)
 
 // Get all members for the dropdown
-const members = computed(() => {
-  return membersStore.members
-})
+const members = computed(() => membersStore.members)
 
 // Filter tasks
 const filterType = ref('all')
 const filterMember = ref('all')
 
 const filteredTasks = computed(() => {
-  let result = [...tasks.value]
+  // Ensure tasks.value is an array before spreading
+  const tasksList = Array.isArray(tasks.value) ? tasks.value : []
+  let result = [...tasksList]
   
   // Filter by type
   if (filterType.value === 'completed') {

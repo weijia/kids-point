@@ -39,6 +39,9 @@ export function useTasks(): TasksStore {
     const savedTasks = localStorage.getItem('kidpoints-tasks')
     if (savedTasks) {
       tasks.value = JSON.parse(savedTasks)
+    } else {
+      // Initialize localStorage with an empty array if no data exists
+      saveTasks()
     }
   }
 
