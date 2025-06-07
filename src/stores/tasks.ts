@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 
 export interface Task {
   id: string
@@ -15,7 +15,7 @@ export interface Task {
 }
 
 export interface TasksStore {
-  tasks: Task[]
+  tasks: Ref<Task[]>
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'completedAt' | 'completedBy' | 'isComplete'>) => void
   updateTask: (id: string, data: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -141,7 +141,7 @@ export function useTasks(): TasksStore {
   }
 
   return {
-    tasks: tasks.value,
+    tasks,
     addTask,
     updateTask,
     deleteTask,

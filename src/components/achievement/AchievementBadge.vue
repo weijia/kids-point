@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Achievement } from '../../stores/achievements'
 
 const props = defineProps<{

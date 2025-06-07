@@ -8,7 +8,7 @@ const router = useRouter()
 const membersStore = inject('membersStore') as MembersStore
 const tasksStore = inject('tasksStore') as TasksStore
 
-const memberCount = computed(() => membersStore.members.length)
+const memberCount = computed(() => membersStore.members.value.length)
 const pendingTasksCount = computed(() => tasksStore.getPendingTasksCount())
 const completedTasksCount = computed(() => tasksStore.getCompletedTasksCount())
 </script>

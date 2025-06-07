@@ -29,7 +29,7 @@ const colorOptions = [
 
 // Get all members
 const members = computed(() => {
-  return membersStore.members
+  return membersStore.members.value
 })
 
 // Add a new member

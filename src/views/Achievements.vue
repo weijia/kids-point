@@ -13,7 +13,7 @@ const selectedMemberId = ref('')
 
 // Get all members
 const members = computed(() => {
-  return membersStore.members
+  return membersStore.members.value
 })
 
 // Get the selected member
@@ -26,7 +26,7 @@ const selectedMember = computed(() => {
 
 // Get all achievements
 const allAchievements = computed(() => {
-  return achievementsStore.achievements
+  return achievementsStore.achievements.value
 })
 
 // Get earned achievements for selected member
@@ -64,16 +64,16 @@ const getAchievementEarnDate = (achievementId: string) => {
     </div>
     
     <!-- Member Selector -->
-    <div v-if="members.length > 0" class="member-selector">
+    <div v-if="members.value.length > 0" class="member-selector">
       <label for="member-select">View achievements for:</label>
       <select id="member-select" v-model="selectedMemberId">
-        <option v-for="member in members" :key="member.id" :value="member.id">
+        <option v-for="member in members.value" :key="member.id" :value="member.id">
           {{ member.name }}
         </option>
       </select>
     </div>
     
-    <div v-if="members.length === 0" class="empty-state">
+    <div v-if="members.value.length === 0" class="empty-state">
       <p>No family members added yet. Add members to track achievements!</p>
     </div>
     
@@ -95,11 +95,11 @@ const getAchievementEarnDate = (achievementId: string) => {
         
         <div class="achievement-stats">
           <div class="stat">
-            <span class="stat-value">{{ earnedAchievements.length }}</span>
+            <span class="stat-value">{{ earnedAchievements.value.length }}</span>
             <span class="stat-label">Earned</span>
           </div>
           <div class="stat">
-            <span class="stat-value">{{ allAchievements.length - earnedAchievements.length }}</span>
+            <span class="stat-value">{{ allAchievements.value.length - earnedAchievements.value.length }}</span>
             <span class="stat-label">Remaining</span>
           </div>
         </div>
@@ -109,13 +109,13 @@ const getAchievementEarnDate = (achievementId: string) => {
       <div class="achievements-section">
         <h2>Achievement Badges</h2>
         
-        <div v-if="allAchievements.length === 0" class="empty-state">
+        <div v-if="allAchievements.value.length === 0" class="empty-state">
           <p>No achievements available yet. Check back soon!</p>
         </div>
         
         <div v-else class="achievements-grid">
           <AchievementBadge 
-            v-for="achievement in allAchievements" 
+            v-for="achievement in allAchievements.value" 
             :key="achievement.id" 
             :achievement="achievement"
             :earned="isAchievementEarned(achievement.id)"

@@ -29,7 +29,7 @@ const iconOptions = [
 
 // Get all members
 const members = computed(() => {
-  return membersStore.members
+  return membersStore.members.value
 })
 
 // Get the selected member
@@ -147,6 +147,60 @@ const formatDate = (timestamp: number) => {
             @redeemed="onRewardRedeemed"
           />
         </div>
+      </div>
+      
+      <!-- Admin Section -->
+      <div v-if="currentMember?.isAdmin" class="admin-section">
+        <h2>Add New Reward</h2>
+        <form @submit.prevent="addReward" class="admin-form">
+          <div class="form-group">
+            <label for="reward-title">Title</label>
+            <input 
+              id="reward-title"
+              v-model="newReward.title"
+              type="text"
+              required
+              placeholder="Enter reward title"
+            >
+          </div>
+          
+          <div class="form-group">
+            <label for="reward-description">Description</label>
+            <textarea
+              id="reward-description"
+              v-model="newReward.description"
+              placeholder="Enter reward description"
+            ></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label>Icon</label>
+            <div class="icon-selector">
+              <button
+                v-for="icon in iconOptions"
+                :key="icon"
+                type="button"
+                :class="{ selected: newReward.icon === icon }"
+                @click="newReward.icon = icon"
+              >
+                {{ icon }}
+              </button>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="reward-points">Points Required</label>
+            <input
+              id="reward-points"
+              v-model.number="newReward.points"
+              type="number"
+              required
+              min="1"
+            >
+          </div>
+          
+          <button type="submit" class="submit-button">Add Reward</button>
+        </form>
       </div>
       
       <!-- Redemption History -->
@@ -332,9 +386,103 @@ const formatDate = (timestamp: number) => {
   color: var(--gray-600);
 }
 
+.admin-section {
+  background-color: var(--white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.form-group label {
+  font-weight: bold;
+  color: var(--gray-700);
+}
+
+.form-group input,
+.form-group textarea {
+  padding: var(--space-sm);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+}
+
+.form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.icon-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: var(--space-sm);
+}
+
+.icon-selector button {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background-color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: var(--font-size-lg);
+}
+
+.icon-selector button:hover {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.icon-selector button.selected {
+  background-color: var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.submit-button {
+  padding: var(--space-md) var(--space-lg);
+  background-color: var(--primary);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-top: var(--space-md);
+}
+
+.submit-button:hover {
+  background-color: var(--primary-dark);
+}
+
 @media (max-width: 768px) {
   .rewards-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .admin-form {
+    max-width: 100%;
+  }
+  
+  .icon-selector {
+    grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
   }
 }
 </style>

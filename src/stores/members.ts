@@ -7,6 +7,7 @@ export interface Member {
   points: number
   createdAt: number
   pointsHistory: PointHistoryEntry[]
+  isAdmin?: boolean
 }
 
 export interface PointHistoryEntry {
@@ -18,7 +19,7 @@ export interface PointHistoryEntry {
 }
 
 export interface MembersStore {
-  members: Member[]
+  members: Ref<Member[]>
   addMember: (name: string, avatarColor: string) => void
   updateMember: (id: string, data: Partial<Member>) => void
   deleteMember: (id: string) => void
@@ -55,7 +56,8 @@ export function useMembers(): MembersStore {
       avatarColor,
       points: 0,
       createdAt: Date.now(),
-      pointsHistory: []
+      pointsHistory: [],
+      isAdmin: members.value.length === 0 // First member becomes admin
     }
     
     members.value.push(newMember)
@@ -132,12 +134,12 @@ export function useMembers(): MembersStore {
   }
 
   // Get leaderboard (sorted by points)
-  const getLeaderboard = computed(() => {
+  const leaderboard = computed(() => {
     return [...members.value].sort((a, b) => b.points - a.points)
   })
 
   return {
-    members: members.value,
+    members,
     addMember,
     updateMember,
     deleteMember,
@@ -145,7 +147,7 @@ export function useMembers(): MembersStore {
     addPoints,
     removePoints,
     getMemberPointsHistory,
-    getLeaderboard: () => getLeaderboard.value,
+    getLeaderboard: () => leaderboard.value,
     loadMembers,
     saveMembers
   }
