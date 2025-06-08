@@ -32,6 +32,17 @@ export interface AchievementsStore {
   saveAchievements: () => void
 }
 
+/**
+ * 成就存储钩子函数
+ * 
+ * 提供成就系统的状态管理及相关操作方法，包括：
+ * - 从localStorage加载/保存成就数据
+ * - 初始化默认成就
+ * - 成就的增删改查
+ * - 成员成就的授予与查询
+ * 
+ * @returns {AchievementsStore} 返回成就存储对象，包含成就列表和操作方法
+ */
 export function useAchievements(): AchievementsStore {
   const achievements = ref<Achievement[]>([])
 

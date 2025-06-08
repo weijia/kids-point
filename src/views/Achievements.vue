@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
-import type { AchievementsStore, Achievement } from '../stores/achievements'
+import { ref, unref, inject, computed } from 'vue'
+import type { AchievementsStore } from '../stores/achievements'
 import type { MembersStore } from '../stores/members'
 import AchievementBadge from '../components/achievement/AchievementBadge.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
@@ -13,20 +13,21 @@ const selectedMemberId = ref('')
 
 // Get all members
 const members = computed(() => {
-  return membersStore.members.value
+  return membersStore.members
 })
 
 // Get the selected member
 const selectedMember = computed(() => {
-  if (!selectedMemberId.value && members.value.length > 0) {
-    selectedMemberId.value = members.value[0].id
+  const membersList = unref(members)
+  if (!selectedMemberId.value && membersList.length > 0) {
+    selectedMemberId.value = membersList[0].id
   }
   return membersStore.getMemberById(selectedMemberId.value)
 })
 
 // Get all achievements
 const allAchievements = computed(() => {
-  return achievementsStore.achievements.value
+  return achievementsStore.achievements
 })
 
 // Get earned achievements for selected member
@@ -36,20 +37,20 @@ const earnedAchievements = computed(() => {
 })
 
 // Check which achievements are earned
-const isAchievementEarned = (achievementId: string) => {
+const isAchievementEarned = (achievementId: string): boolean => {
   if (!selectedMember.value) return false
   
-  return earnedAchievements.value.some(
-    item => item.achievement.id === achievementId
+  return unref(earnedAchievements).some(
+    (item: { achievement: { id: string }; date: number }) => item.achievement.id === achievementId
   )
 }
 
 // Get achievement earn date
-const getAchievementEarnDate = (achievementId: string) => {
+const getAchievementEarnDate = (achievementId: string): number | null => {
   if (!selectedMember.value) return null
   
-  const earned = earnedAchievements.value.find(
-    item => item.achievement.id === achievementId
+  const earned = unref(earnedAchievements).find(
+    (item: { achievement: { id: string }; date: number }) => item.achievement.id === achievementId
   )
   
   return earned ? earned.date : null
@@ -64,16 +65,16 @@ const getAchievementEarnDate = (achievementId: string) => {
     </div>
     
     <!-- Member Selector -->
-    <div v-if="members.value.length > 0" class="member-selector">
+    <div v-if="unref(members).length > 0" class="member-selector">
       <label for="member-select">View achievements for:</label>
       <select id="member-select" v-model="selectedMemberId">
-        <option v-for="member in members.value" :key="member.id" :value="member.id">
+        <option v-for="member in unref(members)" :key="member.id" :value="member.id">
           {{ member.name }}
         </option>
       </select>
     </div>
     
-    <div v-if="members.value.length === 0" class="empty-state">
+    <div v-if="unref(members).length === 0" class="empty-state">
       <p>No family members added yet. Add members to track achievements!</p>
     </div>
     
@@ -95,11 +96,11 @@ const getAchievementEarnDate = (achievementId: string) => {
         
         <div class="achievement-stats">
           <div class="stat">
-            <span class="stat-value">{{ earnedAchievements.value.length }}</span>
+            <span class="stat-value">{{ unref(earnedAchievements).length }}</span>
             <span class="stat-label">Earned</span>
           </div>
           <div class="stat">
-            <span class="stat-value">{{ allAchievements.value.length - earnedAchievements.value.length }}</span>
+            <span class="stat-value">{{ unref(allAchievements).length - unref(earnedAchievements).length }}</span>
             <span class="stat-label">Remaining</span>
           </div>
         </div>
@@ -109,13 +110,13 @@ const getAchievementEarnDate = (achievementId: string) => {
       <div class="achievements-section">
         <h2>Achievement Badges</h2>
         
-        <div v-if="allAchievements.value.length === 0" class="empty-state">
+        <div v-if="unref(allAchievements).length === 0" class="empty-state">
           <p>No achievements available yet. Check back soon!</p>
         </div>
         
         <div v-else class="achievements-grid">
           <AchievementBadge 
-            v-for="achievement in allAchievements.value" 
+            v-for="achievement in unref(allAchievements)" 
             :key="achievement.id" 
             :achievement="achievement"
             :earned="isAchievementEarned(achievement.id)"
