@@ -28,6 +28,11 @@ const canAfford = computed(() => {
   return member.value.points >= props.reward.points
 })
 
+const pointsNeeded = computed(() => {
+  if (!member.value) return props.reward.points
+  return Math.max(0, props.reward.points - member.value.points)
+})
+
 const redeemReward = () => {
   if (!member.value || !canAfford.value) {
     redeemError.value = 'Not enough points!'
@@ -87,7 +92,8 @@ const redeemReward = () => {
           @click="redeemReward"
         >
           <span v-if="isRedeeming">Redeeming...</span>
-          <span v-else>Redeem</span>
+          <span v-else-if="canAfford">Redeem</span>
+          <span v-else>Need {{ pointsNeeded }} more</span>
         </button>
       </div>
       

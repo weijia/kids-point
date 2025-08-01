@@ -3,6 +3,8 @@ import { inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { MembersStore } from '../stores/members'
 import type { TasksStore } from '../stores/tasks'
+import type { Task } from '../stores/tasks'
+import TaskCard from '../components/task/TaskCard.vue'
 
 const router = useRouter()
 const membersStore = inject('membersStore') as MembersStore
@@ -11,10 +13,121 @@ const tasksStore = inject('tasksStore') as TasksStore
 const memberCount = computed(() => membersStore.members.value.length)
 const pendingTasksCount = computed(() => tasksStore.getPendingTasksCount())
 const completedTasksCount = computed(() => tasksStore.getCompletedTasksCount())
+
+// Get all members with their points
+const members = computed(() => membersStore.members.value)
+
+// Get today's tasks (tasks that are not completed and are due today)
+const todaysTasks = computed(() => {
+  return tasksStore.tasks.value.filter(task => {
+    // Check if task is not complete
+    if (task.isComplete) return false
+    
+    // For daily tasks, always include
+    if (task.frequency === 'daily') return true
+    
+    // For weekly tasks, check if it's the right day of the week
+    if (task.frequency === 'weekly') {
+      const today = new Date().getDay() // 0 = Sunday, 1 = Monday, etc.
+      return task.weeklyDay === today
+    }
+    
+    // For one-time tasks, include if not completed
+    if (task.frequency === 'once') return true
+    
+    return false
+  })
+})
+
+// Group tasks by member
+const tasksByMember = computed(() => {
+  const result: Record<string, Task[]> = {
+    'everyone': []
+  }
+  
+  // Initialize with all members
+  members.value.forEach(member => {
+    result[member.id] = []
+  })
+  
+  // Group tasks
+  todaysTasks.value.forEach(task => {
+    if (task.memberId === null || task.memberId === undefined) {
+      result['everyone'].push(task)
+    } else if (result[task.memberId]) {
+      result[task.memberId].push(task)
+    }
+  })
+  
+  return result
+})
+
+// Check if there are any tasks for today
+const hasTodaysTasks = computed(() => {
+  return todaysTasks.value.length > 0
+})
+
+// Get member by ID for display
+const getMember = (id: string) => {
+  return members.value.find(member => member.id === id)
+}
 </script>
 
 <template>
   <div class="home">
+    <!-- Today's Tasks -->
+    <section class="todays-tasks" v-if="hasTodaysTasks">
+      <h2>Today's Tasks</h2>
+      
+      <!-- Tasks for everyone -->
+      <div v-if="tasksByMember['everyone'].length > 0" class="tasks-section">
+        <h3>Tasks for Everyone</h3>
+        <div class="tasks-grid">
+          <TaskCard 
+            v-for="task in tasksByMember['everyone']" 
+            :key="task.id" 
+            :task="task"
+            :is-for-everyone="true"
+          />
+        </div>
+      </div>
+      
+      <!-- Tasks for specific members -->
+      <div 
+        v-for="memberId in Object.keys(tasksByMember)" 
+        :key="memberId"
+        class="tasks-section"
+        v-if="memberId !== 'everyone' && tasksByMember[memberId] && tasksByMember[memberId].length > 0"
+      >
+        <h3>Tasks for {{ getMember(memberId)?.name }}</h3>
+        <div class="tasks-grid">
+          <TaskCard 
+            v-for="task in tasksByMember[memberId]" 
+            :key="task.id" 
+            :task="task"
+          />
+        </div>
+      </div>
+    </section>
+    
+    <!-- Members Points Overview -->
+    <section class="members-points" v-if="memberCount > 0">
+      <h2>Family Points</h2>
+      <div class="grid grid-auto-fit">
+        <div v-for="member in members" :key="member.id" class="card member-card">
+          <div class="member-avatar" :style="{ backgroundColor: member.avatarColor }">
+            {{ member.name.charAt(0).toUpperCase() }}
+          </div>
+          <h3>{{ member.name }}</h3>
+          <div class="points-display">
+            <span class="points-value">{{ member.points }}</span>
+            <span class="points-label">points</span>
+          </div>
+          <button class="btn btn-success" @click="router.push('/store')">Redeem Points</button>
+        </div>
+      </div>
+    </section>
+    
     <section class="hero">
       <div class="hero-content">
         <h1>Welcome to KidPoints!</h1>
@@ -181,6 +294,91 @@ const completedTasksCount = computed(() => tasksStore.getCompletedTasksCount())
   color: var(--gray-700);
 }
 
+/* Members Points Styles */
+.members-points {
+  margin-bottom: var(--space-xl);
+}
+
+.members-points h2 {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.grid-auto-fit {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.member-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-lg);
+  transition: transform 0.2s ease;
+}
+
+.member-card:hover {
+  transform: translateY(-5px);
+}
+
+.member-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  font-weight: bold;
+  color: white;
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-md);
+}
+
+.points-display {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: var(--space-md);
+}
+
+.points-value {
+  font-size: var(--font-size-xxl);
+  font-weight: bold;
+  color: var(--primary-dark);
+  margin-right: var(--space-xs);
+}
+
+.points-label {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+}
+
+/* Today's Tasks Styles */
+.todays-tasks {
+  margin-bottom: var(--space-xl);
+}
+
+.todays-tasks h2 {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.tasks-section {
+  margin-bottom: var(--space-xl);
+}
+
+.tasks-section h3 {
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--gray-200);
+  color: var(--primary-dark);
+}
+
+.tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-md);
+}
+
 @media (max-width: 768px) {
   .grid-3, .grid-4 {
     grid-template-columns: 1fr;
@@ -200,6 +398,10 @@ const completedTasksCount = computed(() => tasksStore.getCompletedTasksCount())
   
   .hero-buttons {
     flex-direction: column;
+  }
+  
+  .tasks-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

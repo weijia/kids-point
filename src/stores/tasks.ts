@@ -27,8 +27,10 @@ export interface TasksStore {
   getCompletedTasksCount: () => number
   resetDailyTasks: () => void
   resetWeeklyTasks: () => void
+  resetAllTasks: () => void
   loadTasks: () => void
   saveTasks: () => void
+  revertTaskCompletion: (taskId: string, memberId: string) => void
 }
 
 export function useTasks(): TasksStore {
@@ -36,11 +38,61 @@ export function useTasks(): TasksStore {
 
   // Load tasks from localStorage
   const loadTasks = () => {
-    const savedTasks = localStorage.getItem('kidpoints-tasks')
-    if (savedTasks) {
-      tasks.value = JSON.parse(savedTasks)
-    } else {
-      // Initialize localStorage with an empty array if no data exists
+    try {
+      const savedTasks = localStorage.getItem('kidpoints-tasks')
+      if (savedTasks) {
+        tasks.value = JSON.parse(savedTasks)
+        console.log('Loaded tasks from localStorage:', tasks.value)
+      } else {
+        console.log('No tasks found in localStorage, initializing with default tasks')
+        // Add some example tasks if no data exists
+        const defaultTasks: Task[] = [
+          {
+            id: '1',
+            title: '整理房间',
+            icon: '🧹',
+            description: '整理床铺和玩具',
+            points: 5,
+            memberId: null, // Available to all members
+            frequency: 'daily',
+            createdAt: Date.now(),
+            completedAt: null,
+            completedBy: null,
+            isComplete: false
+          },
+          {
+            id: '2',
+            title: '完成家庭作业',
+            icon: '📚',
+            description: '完成所有学校作业',
+            points: 10,
+            memberId: null, // Available to all members
+            frequency: 'daily',
+            createdAt: Date.now(),
+            completedAt: null,
+            completedBy: null,
+            isComplete: false
+          },
+          {
+            id: '3',
+            title: '帮忙洗碗',
+            icon: '🍽️',
+            description: '晚餐后帮忙洗碗',
+            points: 8,
+            memberId: null, // Available to all members
+            frequency: 'daily',
+            createdAt: Date.now(),
+            completedAt: null,
+            completedBy: null,
+            isComplete: false
+          }
+        ]
+        tasks.value = defaultTasks
+        saveTasks()
+      }
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+      tasks.value = []
       saveTasks()
     }
   }
@@ -100,11 +152,23 @@ export function useTasks(): TasksStore {
   // Mark a task as complete
   const completeTask = (taskId: string, memberId: string) => {
     const task = getTaskById(taskId)
-    if (task && (task.memberId === memberId || task.memberId === null) && !task.isComplete) {
+    if (task && (task.memberId === memberId || task.memberId === null || task.memberId === 'everyone') && !task.isComplete) {
       updateTask(taskId, {
         isComplete: true,
         completedAt: Date.now(),
         completedBy: memberId
+      })
+    }
+  }
+
+  // Revert task completion
+  const revertTaskCompletion = (taskId: string, memberId: string) => {
+    const task = getTaskById(taskId)
+    if (task && task.completedBy === memberId && task.isComplete) {
+      updateTask(taskId, {
+        isComplete: false,
+        completedAt: null,
+        completedBy: null
       })
     }
   }
@@ -143,6 +207,54 @@ export function useTasks(): TasksStore {
     saveTasks()
   }
 
+  // Reset all tasks to default examples
+  const resetAllTasks = () => {
+    console.log('Resetting all tasks to default examples')
+    const defaultTasks: Task[] = [
+      {
+        id: '1',
+        title: '整理房间',
+        icon: '🧹',
+        description: '整理床铺和玩具',
+        points: 5,
+        memberId: null, // Available to all members
+        frequency: 'daily',
+        createdAt: Date.now(),
+        completedAt: null,
+        completedBy: null,
+        isComplete: false
+      },
+      {
+        id: '2',
+        title: '完成家庭作业',
+        icon: '📚',
+        description: '完成所有学校作业',
+        points: 10,
+        memberId: null, // Available to all members
+        frequency: 'daily',
+        createdAt: Date.now(),
+        completedAt: null,
+        completedBy: null,
+        isComplete: false
+      },
+      {
+        id: '3',
+        title: '帮忙洗碗',
+        icon: '🍽️',
+        description: '晚餐后帮忙洗碗',
+        points: 8,
+        memberId: null, // Available to all members
+        frequency: 'daily',
+        createdAt: Date.now(),
+        completedAt: null,
+        completedBy: null,
+        isComplete: false
+      }
+    ]
+    tasks.value = defaultTasks
+    saveTasks()
+  }
+
   return {
     tasks,
     addTask,
@@ -156,6 +268,7 @@ export function useTasks(): TasksStore {
     getCompletedTasksCount,
     resetDailyTasks,
     resetWeeklyTasks,
+    resetAllTasks,
     loadTasks,
     saveTasks
   }

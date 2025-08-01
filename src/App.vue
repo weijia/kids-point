@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, provide } from 'vue'
+import { onMounted, onUnmounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from './components/layout/Navbar.vue'
 import Footer from './components/layout/Footer.vue'
@@ -35,6 +35,26 @@ router.beforeEach((to, from, next) => {
   }
 })
 
+// Check if tasks need to be reset
+const checkAndResetTasks = () => {
+  const now = new Date()
+  const lastReset = settingsStore.settings.lastDailyReset ? new Date(settingsStore.settings.lastDailyReset) : null
+  
+  // Reset if it's a new day (after midnight)
+  if (!lastReset || now.getDate() !== lastReset.getDate()) {
+    tasksStore.resetDailyTasks()
+    settingsStore.updateSettings({ lastDailyReset: now.getTime() })
+  }
+  
+  // Reset weekly tasks on Monday
+  if (!lastReset || (now.getDay() === 1 && now.getDate() !== lastReset.getDate())) {
+    tasksStore.resetWeeklyTasks()
+  }
+}
+
+// Set up midnight task reset
+let resetTimer: number
+
 // Load data from localStorage on mount
 onMounted(() => {
   membersStore.loadMembers()
@@ -42,6 +62,30 @@ onMounted(() => {
   rewardsStore.loadRewards()
   achievementsStore.loadAchievements()
   settingsStore.loadSettings()
+  
+  // Check and reset tasks on mount
+  checkAndResetTasks()
+  
+  // Set up timer to check at midnight
+  const now = new Date()
+  const midnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0, 0, 0
+  )
+  const timeUntilMidnight = midnight.getTime() - now.getTime()
+  
+  resetTimer = setTimeout(() => {
+    checkAndResetTasks()
+    // Set interval to check every 24 hours after first midnight
+    setInterval(checkAndResetTasks, 24 * 60 * 60 * 1000)
+  }, timeUntilMidnight) as unknown as number
+})
+
+// Clean up timer on unmount
+onUnmounted(() => {
+  clearTimeout(resetTimer)
 })
 </script>
 

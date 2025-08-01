@@ -9,12 +9,20 @@ import PointsParticles from '../particles/PointsParticles.vue'
 const props = defineProps<{
   task: Task;
   showMember?: boolean;
+  isForEveryone?: boolean;
 }>()
 
 const membersStore = inject('membersStore') as MembersStore
 const tasksStore = inject('tasksStore') as TasksStore
 
+// Debug stores injection
+console.log('membersStore:', membersStore)
+console.log('tasksStore:', tasksStore)
+console.log('Current task:', props.task)
+
 const showParticles = ref(false)
+const selectedMemberId = ref('')
+const showMemberSelector = ref(false)
 
 const assignedMember = computed(() => {
   if (props.task.memberId) {
@@ -32,23 +40,66 @@ const frequencyBadge = computed(() => {
 })
 
 const completeTask = (memberId: string) => {
-  if (props.task.isComplete) return
+  console.group('completeTask Debug')
+  console.log('completeTask called with memberId:', memberId)
+  console.log('Current task:', props.task)
+  console.log('tasksStore:', tasksStore)
+  console.log('membersStore:', membersStore)
   
-  tasksStore.completeTask(props.task.id, memberId)
+  if (props.task.isComplete) {
+    console.warn('Task already completed')
+    console.groupEnd()
+    return
+  }
   
-  // Add points to the member
-  membersStore.addPoints(
-    memberId,
-    props.task.points,
-    `Completed task: ${props.task.title}`,
-    props.task.id
-  )
+  try {
+    console.log('Calling tasksStore.completeTask')
+    const result = tasksStore.completeTask(props.task.id, memberId)
+    console.log('completeTask result:', result)
+    
+    console.log('Adding points to member')
+    const pointsResult = membersStore.addPoints(
+      memberId,
+      props.task.points,
+      `Completed task: ${props.task.title}`,
+      props.task.id
+    )
+    console.log('addPoints result:', pointsResult)
+    
+    // Show particles effect
+    showParticles.value = true
+    setTimeout(() => {
+      showParticles.value = false
+    }, 2500)
+    
+    console.log('Task completed successfully')
+  } catch (error) {
+    console.error('Error completing task:', error)
+  } finally {
+    console.groupEnd()
+  }
+}
+
+const completeTaskForMember = () => {
+  if (!selectedMemberId.value) return
   
-  // Show particles effect
-  showParticles.value = true
-  setTimeout(() => {
-    showParticles.value = false
-  }, 2500)
+  completeTask(selectedMemberId.value)
+  showMemberSelector.value = false
+  selectedMemberId.value = ''
+}
+
+const revertTask = (memberId: string) => {
+  if (!memberId) return
+  
+  if (confirm(`确定要撤销完成此任务吗? ${props.task.points}点将被扣除。`)) {
+    tasksStore.revertTaskCompletion(props.task.id, memberId)
+    membersStore.removePoints(
+      memberId,
+      props.task.points,
+      `Reverted task: ${props.task.title}`,
+      props.task.id
+    )
+  }
 }
 </script>
 
@@ -70,6 +121,7 @@ const completeTask = (memberId: string) => {
           <span class="points-label">pts</span>
         </div>
         
+        <!-- For tasks assigned to specific members -->
         <button 
           v-if="!task.isComplete && assignedMember" 
           class="btn btn-success" 
@@ -78,15 +130,51 @@ const completeTask = (memberId: string) => {
           Complete
         </button>
         
+        <!-- For tasks assigned to everyone -->
+        <div v-else-if="!task.isComplete && props.isForEveryone && task.memberId === 'everyone'" class="task-everyone-complete">
+          <button 
+            v-if="!showMemberSelector"
+            class="btn btn-success" 
+            @click="showMemberSelector = true"
+          >
+            Complete
+          </button>
+          
+          <div v-else class="member-selector">
+            <select 
+              v-model="selectedMemberId"
+              class="select-member"
+            >
+              <option value="" disabled>Select member</option>
+              <option v-for="member in membersStore.members" :key="member.id" :value="member.id">
+                {{ member.name }}
+              </option>
+            </select>
+            <button 
+              @click="completeTaskForMember"
+              :disabled="!selectedMemberId"
+              class="btn btn-sm btn-primary"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+        
         <div v-else-if="task.isComplete" class="task-completed">
           <span class="completed-icon">✅</span>
           <span>Completed</span>
+          <button 
+            class="btn btn-sm btn-outline-danger ml-2"
+            @click.stop="revertTask(task.completedBy)"
+          >
+            Undo
+          </button>
         </div>
       </div>
     </div>
     
     <MemberAvatar 
-      v-if="showMember && assignedMember" 
+      v-if="showMember && assignedMember && assignedMember.name" 
       :name="assignedMember.name" 
       :color="assignedMember.avatarColor" 
       size="sm"

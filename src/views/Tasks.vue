@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { ref, inject, computed, onMounted } from 'vue'
 import type { TasksStore, Task } from '../stores/tasks'
 import type { MembersStore } from '../stores/members'
 import TaskCard from '../components/task/TaskCard.vue'
 
 const tasksStore = inject('tasksStore') as TasksStore
 const membersStore = inject('membersStore') as MembersStore
+
+// Load tasks when component is mounted
+onMounted(() => {
+  console.log('Tasks component mounted, loading tasks...')
+  tasksStore.loadTasks()
+  console.log('Tasks loaded:', tasksStore.tasks.value)
+  console.log('Tasks count:', tasksStore.tasks.value.length)
+})
+
+// Reset all tasks to default examples
+const resetTasks = () => {
+  if (confirm('Are you sure you want to reset all tasks to default examples? This will delete all existing tasks.')) {
+    tasksStore.resetAllTasks()
+  }
+}
 
 // New task form data
 const newTask = ref({
@@ -26,7 +41,11 @@ const iconOptions = [
 ]
 
 // Get all tasks
-const tasks = computed(() => tasksStore.tasks)
+const tasks = computed(() => {
+  console.log('Raw tasks from store:', tasksStore.tasks)
+  // Make sure we're returning the actual array, not the Ref object
+  return tasksStore.tasks.value || []
+})
 
 // Get all members for the dropdown
 const members = computed(() => membersStore.members)
@@ -36,8 +55,12 @@ const filterType = ref('all')
 const filterMember = ref('all')
 
 const filteredTasks = computed(() => {
-  // Ensure tasks.value is an array before spreading
-  const tasksList = Array.isArray(tasks.value) ? tasks.value : []
+  // Get the tasks array from the computed property
+  const tasksList = tasks.value
+  console.log('Total tasks before filtering:', tasksList.length)
+  console.log('Current filter type:', filterType.value)
+  console.log('Current filter member:', filterMember.value)
+  
   let result = [...tasksList]
   
   // Filter by type
@@ -50,10 +73,12 @@ const filteredTasks = computed(() => {
   // Filter by member
   if (filterMember.value !== 'all') {
     result = result.filter(task => 
-      task.memberId === filterMember.value || task.memberId === null
+      task.memberId === filterMember.value || 
+      (task.memberId === null && filterMember.value === 'unassigned')
     )
   }
   
+  console.log('Filtered tasks count:', result.length)
   return result
 })
 
@@ -216,10 +241,16 @@ const deleteTask = () => {
           <label for="filter-member">Member</label>
           <select id="filter-member" v-model="filterMember">
             <option value="all">All Members</option>
+            <option value="unassigned">Unassigned (Everyone)</option>
             <option v-for="member in members" :key="member.id" :value="member.id">
               {{ member.name }}
             </option>
           </select>
+        </div>
+        
+        <div class="filter-group">
+          <label>&nbsp;</label>
+          <button class="btn btn-secondary" @click="resetTasks">Reset Tasks</button>
         </div>
       </div>
       

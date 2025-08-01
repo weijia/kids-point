@@ -21,6 +21,17 @@ const newReward = ref({
 
 // Reward being edited
 const editingReward = ref<Reward | null>(null)
+const showEditForm = ref(false)
+const editForm = ref({
+  title: '',
+  description: '',
+  icon: '🎁',
+  points: 50
+})
+
+// Reward to delete
+const rewardToDelete = ref<Reward | null>(null)
+const showDeleteConfirm = ref(false)
 
 // Icon options
 const iconOptions = [
@@ -52,9 +63,19 @@ const redemptionHistory = computed(() => {
 })
 
 // Handle reward redemption
+const redeemSuccess = ref(false)
+const redeemedReward = ref<Reward | null>(null)
+
 const onRewardRedeemed = (reward: Reward) => {
   // Show a success message
-  alert(`Congratulations! You've redeemed "${reward.title}" for ${reward.points} points!`)
+  redeemedReward.value = reward
+  redeemSuccess.value = true
+  
+  // Hide the success message after 3 seconds
+  setTimeout(() => {
+    redeemSuccess.value = false
+    redeemedReward.value = null
+  }, 3000)
 }
 
 // Add a new reward (admin only)
@@ -75,6 +96,70 @@ const addReward = () => {
     icon: '🎁',
     points: 50
   }
+}
+
+// Success messages
+const showEditSuccess = ref(false)
+const showDeleteSuccess = ref(false)
+
+// Edit a reward
+const openEditForm = (reward: Reward) => {
+  editingReward.value = reward
+  editForm.value = {
+    title: reward.title,
+    description: reward.description,
+    icon: reward.icon,
+    points: reward.points
+  }
+  showEditForm.value = true
+}
+
+const saveEditedReward = () => {
+  if (!editingReward.value || editForm.value.title.trim() === '') return
+  
+  rewardsStore.updateReward(editingReward.value.id, {
+    title: editForm.value.title.trim(),
+    description: editForm.value.description.trim(),
+    icon: editForm.value.icon,
+    points: editForm.value.points
+  })
+  
+  // Close form
+  showEditForm.value = false
+  editingReward.value = null
+  
+  // Show success message
+  showEditSuccess.value = true
+  setTimeout(() => {
+    showEditSuccess.value = false
+  }, 3000)
+}
+
+// Delete a reward
+const openDeleteConfirm = (reward: Reward) => {
+  rewardToDelete.value = reward
+  showDeleteConfirm.value = true
+}
+
+const confirmDelete = () => {
+  if (!rewardToDelete.value) return
+  
+  rewardsStore.deleteReward(rewardToDelete.value.id)
+  
+  // Close confirmation
+  showDeleteConfirm.value = false
+  rewardToDelete.value = null
+  
+  // Show success message
+  showDeleteSuccess.value = true
+  setTimeout(() => {
+    showDeleteSuccess.value = false
+  }, 3000)
+}
+
+const cancelDelete = () => {
+  showDeleteConfirm.value = false
+  rewardToDelete.value = null
 }
 
 // Format date
@@ -150,8 +235,33 @@ const formatDate = (timestamp: number) => {
       </div>
       
       <!-- Admin Section -->
-      <div v-if="currentMember?.isAdmin" class="admin-section">
-        <h2>Add New Reward</h2>
+      <div v-if="selectedMember?.isAdmin" class="admin-section">
+        <h2>Reward Management</h2>
+        
+        <!-- Existing Rewards Management -->
+        <div class="admin-rewards-list">
+          <h3>Manage Existing Rewards</h3>
+          <div v-if="rewards.length === 0" class="empty-state">
+            <p>No rewards available. Add your first reward below!</p>
+          </div>
+          <div v-else class="admin-rewards-grid">
+            <div v-for="reward in rewards" :key="reward.id" class="admin-reward-item">
+              <div class="admin-reward-content">
+                <div class="admin-reward-icon">{{ reward.icon }}</div>
+                <div class="admin-reward-info">
+                  <h4>{{ reward.title }}</h4>
+                  <p>{{ reward.points }} points</p>
+                </div>
+              </div>
+              <div class="admin-reward-actions">
+                <button @click="openEditForm(reward)" class="btn-edit">Edit</button>
+                <button @click="openDeleteConfirm(reward)" class="btn-delete">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <h3 class="mt-lg">Add New Reward</h3>
         <form @submit.prevent="addReward" class="admin-form">
           <div class="form-group">
             <label for="reward-title">Title</label>
@@ -222,6 +332,125 @@ const formatDate = (timestamp: number) => {
               <span>{{ item.reward.points }}</span>
               <small>points</small>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Success Messages -->
+    <div v-if="redeemSuccess" class="redemption-success">
+      <div class="success-content">
+        <div class="success-icon">🎉</div>
+        <div class="success-message">
+          <h3>Congratulations!</h3>
+          <p>You've successfully redeemed "{{ redeemedReward?.title }}" for {{ redeemedReward?.points }} points!</p>
+        </div>
+      </div>
+    </div>
+    
+    <div v-if="showEditSuccess" class="redemption-success" style="background-color: var(--primary);">
+      <div class="success-content">
+        <div class="success-icon">✅</div>
+        <div class="success-message">
+          <h3>Reward Updated</h3>
+          <p>The reward has been successfully updated.</p>
+        </div>
+      </div>
+    </div>
+    
+    <div v-if="showDeleteSuccess" class="redemption-success" style="background-color: var(--gray-700);">
+      <div class="success-content">
+        <div class="success-icon">🗑️</div>
+        <div class="success-message">
+          <h3>Reward Deleted</h3>
+          <p>The reward has been successfully removed.</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Edit Reward Modal -->
+    <div v-if="showEditForm" class="modal">
+      <div class="modal-overlay" @click="showEditForm = false"></div>
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>Edit Reward</h3>
+          <button @click="showEditForm = false" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="saveEditedReward" class="admin-form">
+            <div class="form-group">
+              <label for="edit-reward-title">Title</label>
+              <input 
+                id="edit-reward-title"
+                v-model="editForm.title"
+                type="text"
+                required
+                placeholder="Enter reward title"
+              >
+            </div>
+            
+            <div class="form-group">
+              <label for="edit-reward-description">Description</label>
+              <textarea
+                id="edit-reward-description"
+                v-model="editForm.description"
+                placeholder="Enter reward description"
+              ></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>Icon</label>
+              <div class="icon-selector">
+                <button
+                  v-for="icon in iconOptions"
+                  :key="icon"
+                  type="button"
+                  :class="{ selected: editForm.icon === icon }"
+                  @click="editForm.icon = icon"
+                >
+                  {{ icon }}
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="edit-reward-points">Points Required</label>
+              <input
+                id="edit-reward-points"
+                v-model.number="editForm.points"
+                type="number"
+                required
+                min="1"
+              >
+            </div>
+            
+            <div class="modal-actions">
+              <button type="button" @click="showEditForm = false" class="btn-cancel">Cancel</button>
+              <button type="submit" class="btn-save">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteConfirm" class="modal">
+      <div class="modal-overlay" @click="cancelDelete"></div>
+      <div class="modal-container delete-modal">
+        <div class="modal-header">
+          <h3>Delete Reward</h3>
+          <button @click="cancelDelete" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="delete-warning">
+            <div class="warning-icon">⚠️</div>
+            <p>Are you sure you want to delete <strong>{{ rewardToDelete?.title }}</strong>?</p>
+            <p class="warning-text">This action cannot be undone.</p>
+          </div>
+          
+          <div class="modal-actions">
+            <button @click="cancelDelete" class="btn-cancel">Cancel</button>
+            <button @click="confirmDelete" class="btn-delete">Delete</button>
           </div>
         </div>
       </div>
@@ -393,6 +622,67 @@ const formatDate = (timestamp: number) => {
   box-shadow: var(--shadow-md);
 }
 
+.admin-rewards-list {
+  margin-bottom: var(--space-xl);
+}
+
+.admin-rewards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.admin-reward-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.admin-reward-item:hover {
+  background-color: var(--gray-200);
+}
+
+.admin-reward-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.admin-reward-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  background-color: var(--white);
+  border-radius: var(--radius-md);
+}
+
+.admin-reward-info h4 {
+  margin: 0;
+  margin-bottom: var(--space-xs);
+}
+
+.admin-reward-info p {
+  margin: 0;
+  color: var(--gray-600);
+}
+
+.admin-reward-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.mt-lg {
+  margin-top: var(--space-xl);
+}
+
 .admin-form {
   display: flex;
   flex-direction: column;
@@ -472,6 +762,180 @@ const formatDate = (timestamp: number) => {
   background-color: var(--primary-dark);
 }
 
+/* Modal Styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-container {
+  background-color: var(--white);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: 1001;
+  box-shadow: var(--shadow-lg);
+}
+
+.delete-modal {
+  max-width: 400px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--gray-600);
+}
+
+.modal-body {
+  padding: var(--space-lg);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.btn-cancel, .btn-save, .btn-delete, .btn-edit {
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel {
+  background-color: var(--gray-300);
+  color: var(--gray-700);
+}
+
+.btn-cancel:hover {
+  background-color: var(--gray-400);
+}
+
+.btn-save {
+  background-color: var(--primary);
+  color: var(--white);
+}
+
+.btn-save:hover {
+  background-color: var(--primary-dark);
+}
+
+.btn-edit {
+  background-color: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+.btn-edit:hover {
+  background-color: var(--primary);
+  color: var(--white);
+}
+
+.btn-delete {
+  background-color: var(--danger-light);
+  color: var(--danger);
+}
+
+.btn-delete:hover {
+  background-color: var(--danger);
+  color: var(--white);
+}
+
+.delete-warning {
+  text-align: center;
+  padding: var(--space-lg) 0;
+}
+
+.warning-icon {
+  font-size: 40px;
+  margin-bottom: var(--space-md);
+}
+
+.warning-text {
+  color: var(--danger);
+  font-weight: bold;
+  margin-top: var(--space-sm);
+}
+
+/* Redemption Success Message */
+.redemption-success {
+  position: fixed;
+  bottom: var(--space-lg);
+  right: var(--space-lg);
+  background-color: var(--success);
+  color: var(--white);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  animation: slideIn 0.3s ease-out;
+}
+
+.success-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.success-icon {
+  font-size: 24px;
+}
+
+.success-message h3 {
+  margin: 0 0 var(--space-xs) 0;
+}
+
+.success-message p {
+  margin: 0;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 768px) {
   .rewards-grid {
     grid-template-columns: 1fr;
@@ -483,6 +947,21 @@ const formatDate = (timestamp: number) => {
   
   .icon-selector {
     grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  }
+  
+  .admin-rewards-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-container {
+    width: 95%;
+    max-height: 80vh;
+  }
+  
+  .redemption-success {
+    left: var(--space-md);
+    right: var(--space-md);
+    bottom: var(--space-md);
   }
 }
 </style>
