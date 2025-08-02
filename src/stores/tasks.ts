@@ -9,6 +9,7 @@ export interface Task {
   memberId: string | null // null for tasks available to all members
   frequency: 'daily' | 'weekly' | 'once'
   weeklyDay?: number // 添加周几属性，用于每周任务
+  dueDate?: string // 添加截止日期属性，用于一次性任务
   createdAt: number
   completedAt: number | null
   completedBy: string | null

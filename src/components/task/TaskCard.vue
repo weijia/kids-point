@@ -49,6 +49,7 @@ const completeTask = (memberId?: string) => {
   if (!effectiveMemberId) {
     console.error('No member selected - neither passed nor current')
     return
+    return
   }
   
   // Prevent completing already completed tasks
@@ -124,8 +125,11 @@ const revertTask = (memberId: string) => {
         props.task.id
       )
       console.log('Task reverted successfully')
+      // 显示撤销成功的提示
+      alert('任务撤销成功！')
     } catch (error) {
       console.error('Error reverting task:', error)
+      alert('任务撤销失败，请重试！')
     }
   }
 }
@@ -249,6 +253,8 @@ const revertTask = (memberId: string) => {
 .task-card.is-complete {
   opacity: 0.7;
   background-color: var(--gray-100);
+  transform: scale(0.98);
+  transition: all 0.2s ease;
 }
 
 .task-icon {

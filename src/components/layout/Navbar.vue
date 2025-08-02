@@ -11,6 +11,10 @@ const membersStore = inject('membersStore') as MembersStore
 
 const isMenuOpen = ref(false)
 
+// Get members from store
+const members = computed(() => membersStore.members.value)
+const currentMember = computed(() => membersStore.currentMember)
+
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value
 }
@@ -27,25 +31,21 @@ const isAuthenticated = computed(() => {
   return settingsStore.isAuthenticated
 })
 
-// 以下计算属性和方法在模板中使用，保留但标记为未使用
-// @ts-ignore
-const currentMember = computed(() => {
-  return membersStore.currentMember
-})
-
-// @ts-ignore
-const members = computed(() => {
-  return membersStore.members
-})
-
-// @ts-ignore
+// Handle member selection change
 const handleMemberChange = (event: Event) => {
   const select = event.target as HTMLSelectElement
   const memberId = select.value
+  
   if (memberId) {
     membersStore.setCurrentMember(memberId)
+    // Redirect to home page to show the member's dashboard
+    if (route.path !== '/') {
+      router.push('/')
+    }
   }
 }
+
+// 注意：这些变量已在上方定义，不需要重复声明
 </script>
 
 <template>
@@ -62,6 +62,15 @@ const handleMemberChange = (event: Event) => {
       </button>
       
       <nav class="navbar-menu" :class="{ 'is-open': isMenuOpen }">
+        <div class="member-selector" v-if="members.length > 0">
+          <select :value="currentMember?.id || ''" @change="handleMemberChange">
+            <option value="" disabled>选择成员</option>
+            <option v-for="member in members" :key="member.id" :value="member.id">
+              {{ member.name }}
+            </option>
+          </select>
+        </div>
+        
         <ul class="navbar-nav">
           <li class="nav-item" :class="{ 'active': isActive('Home') }">
             <router-link to="/" @click="closeMenu">🏠 Home</router-link>
@@ -140,6 +149,30 @@ const handleMemberChange = (event: Event) => {
   border-radius: 3px;
 }
 
+.member-selector {
+  margin-right: var(--space-md);
+}
+
+.member-selector select {
+  padding: var(--space-xs) var(--space-sm);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-md);
+  background-color: var(--white);
+  font-weight: 600;
+  color: var(--gray-800);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.member-selector select:hover {
+  border-color: var(--primary-dark);
+}
+
+.member-selector select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
 .navbar-nav {
   display: flex;
   list-style: none;
@@ -196,8 +229,24 @@ const handleMemberChange = (event: Event) => {
     visibility: visible;
   }
   
+  .navbar-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .member-selector {
+    margin: 0 0 var(--space-md);
+    width: 80%;
+  }
+  
+  .member-selector select {
+    width: 100%;
+  }
+  
   .navbar-nav {
     flex-direction: column;
+    width: 100%;
   }
   
   .nav-item {

@@ -18,7 +18,7 @@ const members = computed(() => {
 
 // Get the selected member
 const selectedMember = computed(() => {
-  const membersList = unref(members)
+  const membersList = unref(members).value
   if (!selectedMemberId.value && membersList && membersList.length > 0) {
     selectedMemberId.value = membersList[0]?.id || ''
   }

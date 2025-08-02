@@ -32,8 +32,14 @@ const todaysTasks = computed(() => {
       return task.weeklyDay === today
     }
     
-    // For one-time tasks, include if not completed
-    if (task.frequency === 'once') return true
+    // For one-time tasks, include if not completed and due today or in the past
+    if (task.frequency === 'once') {
+      if (!task.dueDate) return true
+      const dueDate = new Date(task.dueDate)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      return dueDate <= today
+    }
     
     return false
   })
@@ -131,7 +137,7 @@ const currentMember = computed(() => membersStore.currentMember)
           <h3>{{ member.name }}</h3>
           <div class="points-display">
             <span class="points-value">{{ member.points }}</span>
-            <span class="points-label">points</span>
+            <span class="points-label">积分</span>
           </div>
           <button class="btn btn-success" @click="router.push('/store')">Redeem Points</button>
         </div>
@@ -491,6 +497,15 @@ const currentMember = computed(() => membersStore.currentMember)
   
   .tasks-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .member-card {
+    min-width: 100%;
+  }
+  
+  .points-display {
+    flex-direction: column;
+    align-items: center;
   }
 }
 </style>
