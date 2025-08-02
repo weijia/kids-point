@@ -27,14 +27,18 @@ const isAuthenticated = computed(() => {
   return settingsStore.isAuthenticated
 })
 
+// 以下计算属性和方法在模板中使用，保留但标记为未使用
+// @ts-ignore
 const currentMember = computed(() => {
   return membersStore.currentMember
 })
 
+// @ts-ignore
 const members = computed(() => {
   return membersStore.members
 })
 
+// @ts-ignore
 const handleMemberChange = (event: Event) => {
   const select = event.target as HTMLSelectElement
   const memberId = select.value

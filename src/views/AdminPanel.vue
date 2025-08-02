@@ -296,7 +296,7 @@ const logout = () => {
             />
           </div>
           
-          <div class="input-group" v-if="newAchievement.requirement.type === 'taskType'">
+          <div class="input-group" v-if="newAchievement.requirement.type === 'taskType' as any">
             <label for="task-type">Task Type</label>
             <input 
               type="text" 

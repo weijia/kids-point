@@ -16,7 +16,7 @@ const membersStore = inject('membersStore') as MembersStore
 const tasksStore = inject('tasksStore') as TasksStore
 
 // Debug stores injection only in development mode
-if (process.env.NODE_ENV !== 'production') {
+if (import.meta.env.DEV) {
   console.log('membersStore:', membersStore)
   console.log('tasksStore:', tasksStore)
   console.log('Current task:', props.task)
@@ -58,7 +58,7 @@ const completeTask = (memberId?: string) => {
   }
   
   // Debug info - only in development
-  if (process.env.NODE_ENV !== 'production') {
+  if (import.meta.env.DEV) {
     console.group('completeTask Debug')
     console.log('completeTask called with memberId:', effectiveMemberId)
     console.log('Current task:', props.task)
@@ -66,10 +66,10 @@ const completeTask = (memberId?: string) => {
   
   try {
     // Complete the task in the store
-    const result = tasksStore.completeTask(props.task.id, effectiveMemberId)
+    tasksStore.completeTask(props.task.id, effectiveMemberId)
     
     // Add points to the member
-    const pointsResult = membersStore.addPoints(
+    membersStore.addPoints(
       effectiveMemberId,
       props.task.points,
       `Completed task: ${props.task.title}`,
@@ -82,13 +82,13 @@ const completeTask = (memberId?: string) => {
       showParticles.value = false
     }, 2500)
     
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.log('Task completed successfully')
     }
   } catch (error) {
     console.error('Error completing task:', error)
   } finally {
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.groupEnd()
     }
   }
@@ -210,7 +210,7 @@ const revertTask = (memberId: string) => {
           <span>Completed</span>
           <button 
             class="btn btn-sm btn-outline-danger ml-2"
-            @click.stop="revertTask(task.completedBy)"
+            @click.stop="task.completedBy ? revertTask(task.completedBy) : null"
           >
             Undo
           </button>

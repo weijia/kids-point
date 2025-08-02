@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
 import type { RewardsStore, Reward } from '../stores/rewards'
-import type { MembersStore, Member } from '../stores/members'
+import type { MembersStore } from '../stores/members'
 import RewardCard from '../components/reward/RewardCard.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 

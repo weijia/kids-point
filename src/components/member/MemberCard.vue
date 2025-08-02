@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+// 移除未使用的导入
+// import { computed } from 'vue'
 import type { Member } from '../../stores/members'
 import MemberAvatar from './MemberAvatar.vue'
 

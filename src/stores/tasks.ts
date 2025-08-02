@@ -1,4 +1,4 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 
 export interface Task {
   id: string
@@ -8,6 +8,7 @@ export interface Task {
   points: number
   memberId: string | null // null for tasks available to all members
   frequency: 'daily' | 'weekly' | 'once'
+  weeklyDay?: number // 添加周几属性，用于每周任务
   createdAt: number
   completedAt: number | null
   completedBy: string | null
@@ -162,7 +163,7 @@ export function useTasks(): TasksStore {
   }
 
   // Revert task completion
-  const revertTaskCompletion = (taskId: string, memberId: string) => {
+  const _revertTaskCompletion = (taskId: string, memberId: string) => {
     const task = getTaskById(taskId)
     if (task && task.completedBy === memberId && task.isComplete) {
       updateTask(taskId, {
@@ -270,6 +271,7 @@ export function useTasks(): TasksStore {
     resetWeeklyTasks,
     resetAllTasks,
     loadTasks,
-    saveTasks
+    saveTasks,
+    revertTaskCompletion: _revertTaskCompletion
   }
 }

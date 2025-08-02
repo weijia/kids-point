@@ -19,8 +19,8 @@ const members = computed(() => {
 // Get the selected member
 const selectedMember = computed(() => {
   const membersList = unref(members)
-  if (!selectedMemberId.value && membersList.length > 0) {
-    selectedMemberId.value = membersList[0].id
+  if (!selectedMemberId.value && membersList && membersList.length > 0) {
+    selectedMemberId.value = membersList[0]?.id || ''
   }
   return membersStore.getMemberById(selectedMemberId.value)
 })
@@ -120,7 +120,7 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
             :key="achievement.id" 
             :achievement="achievement"
             :earned="isAchievementEarned(achievement.id)"
-            :date="getAchievementEarnDate(achievement.id)"
+            :date="getAchievementEarnDate(achievement.id) || undefined"
           />
         </div>
       </div>

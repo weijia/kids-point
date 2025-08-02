@@ -27,7 +27,7 @@ provide('achievementsStore', achievementsStore)
 provide('settingsStore', settingsStore)
 
 // Router guard for admin routes
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !settingsStore.isAuthenticated) {
     next({ name: 'AdminLogin' })
   } else {

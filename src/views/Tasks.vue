@@ -48,7 +48,9 @@ const tasks = computed(() => {
 })
 
 // Get all members for the dropdown
-const members = computed(() => membersStore.members)
+const members = computed(() => {
+  return membersStore.members.value || []
+})
 
 // Filter tasks
 const filterType = ref('all')

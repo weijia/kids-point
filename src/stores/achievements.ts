@@ -160,7 +160,7 @@ export function useAchievements(): AchievementsStore {
   }
 
   // Check if a member has earned any new achievements
-  const checkAchievements = (memberId: string) => {
+  const checkAchievements = (_memberId: string) => {
     // This would be implemented to check the member's stats against achievements
     // and award any that they qualify for
     // It needs to be called when relevant events occur (tasks completed, points earned, etc.)
