@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import Particles from 'vue3-particles'
 import App from './App.vue'
 import './style.css'
@@ -15,7 +15,7 @@ import { useAchievements } from './stores/achievements'
 
 // Create router instance
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(), // 使用 hash 模式以支持非根目录部署
   routes
 })
 
