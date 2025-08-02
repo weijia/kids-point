@@ -15,10 +15,12 @@ const props = defineProps<{
 const membersStore = inject('membersStore') as MembersStore
 const tasksStore = inject('tasksStore') as TasksStore
 
-// Debug stores injection
-console.log('membersStore:', membersStore)
-console.log('tasksStore:', tasksStore)
-console.log('Current task:', props.task)
+// Debug stores injection only in development mode
+if (process.env.NODE_ENV !== 'production') {
+  console.log('membersStore:', membersStore)
+  console.log('tasksStore:', tasksStore)
+  console.log('Current task:', props.task)
+}
 
 const showParticles = ref(false)
 const selectedMemberId = ref('')
@@ -39,32 +41,40 @@ const frequencyBadge = computed(() => {
   }
 })
 
-const completeTask = (memberId: string) => {
-  console.group('completeTask Debug')
-  console.log('completeTask called with memberId:', memberId)
-  console.log('Current task:', props.task)
-  console.log('tasksStore:', tasksStore)
-  console.log('membersStore:', membersStore)
+const completeTask = (memberId?: string) => {
+  // Use passed memberId or current member's ID
+  const effectiveMemberId = memberId || membersStore.currentMember?.id
   
-  if (props.task.isComplete) {
-    console.warn('Task already completed')
-    console.groupEnd()
+  // Validate member ID
+  if (!effectiveMemberId) {
+    console.error('No member selected - neither passed nor current')
     return
   }
   
+  // Prevent completing already completed tasks
+  if (props.task.isComplete) {
+    console.warn('Task already completed')
+    return
+  }
+  
+  // Debug info - only in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.group('completeTask Debug')
+    console.log('completeTask called with memberId:', effectiveMemberId)
+    console.log('Current task:', props.task)
+  }
+  
   try {
-    console.log('Calling tasksStore.completeTask')
-    const result = tasksStore.completeTask(props.task.id, memberId)
-    console.log('completeTask result:', result)
+    // Complete the task in the store
+    const result = tasksStore.completeTask(props.task.id, effectiveMemberId)
     
-    console.log('Adding points to member')
+    // Add points to the member
     const pointsResult = membersStore.addPoints(
-      memberId,
+      effectiveMemberId,
       props.task.points,
       `Completed task: ${props.task.title}`,
       props.task.id
     )
-    console.log('addPoints result:', pointsResult)
     
     // Show particles effect
     showParticles.value = true
@@ -72,33 +82,51 @@ const completeTask = (memberId: string) => {
       showParticles.value = false
     }, 2500)
     
-    console.log('Task completed successfully')
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Task completed successfully')
+    }
   } catch (error) {
     console.error('Error completing task:', error)
   } finally {
-    console.groupEnd()
+    if (process.env.NODE_ENV !== 'production') {
+      console.groupEnd()
+    }
   }
 }
 
 const completeTaskForMember = () => {
-  if (!selectedMemberId.value) return
+  if (!selectedMemberId.value) {
+    console.error('No member selected in selector')
+    return
+  }
   
-  completeTask(selectedMemberId.value)
+  const memberId = selectedMemberId.value
+  completeTask(memberId)
   showMemberSelector.value = false
+  
+  console.log('Task completed for member:', memberId)
   selectedMemberId.value = ''
 }
 
 const revertTask = (memberId: string) => {
-  if (!memberId) return
+  if (!memberId) {
+    console.error('Cannot revert task: No member ID provided')
+    return
+  }
   
   if (confirm(`确定要撤销完成此任务吗? ${props.task.points}点将被扣除。`)) {
-    tasksStore.revertTaskCompletion(props.task.id, memberId)
-    membersStore.removePoints(
-      memberId,
-      props.task.points,
-      `Reverted task: ${props.task.title}`,
-      props.task.id
-    )
+    try {
+      tasksStore.revertTaskCompletion(props.task.id, memberId)
+      membersStore.removePoints(
+        memberId,
+        props.task.points,
+        `Reverted task: ${props.task.title}`,
+        props.task.id
+      )
+      console.log('Task reverted successfully')
+    } catch (error) {
+      console.error('Error reverting task:', error)
+    }
   }
 }
 </script>
@@ -131,14 +159,23 @@ const revertTask = (memberId: string) => {
         </button>
         
         <!-- For tasks assigned to everyone -->
-        <div v-else-if="!task.isComplete && props.isForEveryone && task.memberId === 'everyone'" class="task-everyone-complete">
-          <button 
-            v-if="!showMemberSelector"
-            class="btn btn-success" 
-            @click="showMemberSelector = true"
-          >
-            Complete
-          </button>
+        <div v-else-if="!task.isComplete && (props.isForEveryone || task.memberId === 'everyone')" class="task-everyone-complete">
+          <div v-if="!showMemberSelector" class="task-buttons">
+            <button 
+              class="btn btn-success" 
+              @click="showMemberSelector = true"
+            >
+              Complete
+            </button>
+            <button 
+              v-if="membersStore.currentMember"
+              class="btn btn-primary" 
+              @click="completeTask(membersStore.currentMember.id)"
+              title="由当前用户完成"
+            >
+              由{{ membersStore.currentMember.name }}完成
+            </button>
+          </div>
           
           <div v-else class="member-selector">
             <select 
@@ -146,17 +183,25 @@ const revertTask = (memberId: string) => {
               class="select-member"
             >
               <option value="" disabled>Select member</option>
-              <option v-for="member in membersStore.members" :key="member.id" :value="member.id">
-                {{ member.name }}
+              <option v-for="member in membersStore.getMembersRefs()" :key="member.value.id" :value="member.value.id">
+                {{ member.value.name }}
               </option>
             </select>
-            <button 
-              @click="completeTaskForMember"
-              :disabled="!selectedMemberId"
-              class="btn btn-sm btn-primary"
-            >
-              Done
-            </button>
+            <div class="member-selector-actions">
+              <button 
+                @click="completeTaskForMember"
+                :disabled="!selectedMemberId"
+                class="btn btn-sm btn-primary"
+              >
+                Done
+              </button>
+              <button 
+                @click="showMemberSelector = false; selectedMemberId = ''"
+                class="btn btn-sm btn-outline-secondary"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
         
@@ -277,5 +322,29 @@ const revertTask = (memberId: string) => {
   position: absolute;
   top: var(--space-md);
   right: var(--space-md);
+}
+
+.member-selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.member-selector-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.select-member {
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray-300);
+  width: 100%;
+}
+
+.task-buttons {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
 }
 </style>

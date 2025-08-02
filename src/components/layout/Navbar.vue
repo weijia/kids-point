@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSettings } from '../../stores/settings'
+import { type MembersStore } from '../../stores/members'
 
 const router = useRouter()
 const route = useRoute()
 const settingsStore = useSettings()
+const membersStore = inject('membersStore') as MembersStore
 
 const isMenuOpen = ref(false)
 
@@ -24,6 +26,22 @@ const isActive = (routeName: string) => {
 const isAuthenticated = computed(() => {
   return settingsStore.isAuthenticated
 })
+
+const currentMember = computed(() => {
+  return membersStore.currentMember
+})
+
+const members = computed(() => {
+  return membersStore.members
+})
+
+const handleMemberChange = (event: Event) => {
+  const select = event.target as HTMLSelectElement
+  const memberId = select.value
+  if (memberId) {
+    membersStore.setCurrentMember(memberId)
+  }
+}
 </script>
 
 <template>

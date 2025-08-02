@@ -68,16 +68,27 @@ const hasTodaysTasks = computed(() => {
 })
 
 // Get member by ID for display
+const filteredMemberIds = computed(() => {
+  return Object.keys(tasksByMember.value).filter(memberId => 
+    memberId !== 'everyone' && 
+    tasksByMember.value[memberId] && 
+    tasksByMember.value[memberId].length > 0
+  )
+})
+
 const getMember = (id: string) => {
   return members.value.find(member => member.id === id)
 }
+
+// 获取当前用户信息
+const currentMember = computed(() => membersStore.currentMember)
 </script>
 
 <template>
   <div class="home">
     <!-- Today's Tasks -->
     <section class="todays-tasks" v-if="hasTodaysTasks">
-      <h2>Today's Tasks</h2>
+      <h2 v-if="currentMember">{{ currentMember.name }}的个人中心</h2>
       
       <!-- Tasks for everyone -->
       <div v-if="tasksByMember['everyone'].length > 0" class="tasks-section">
@@ -94,10 +105,9 @@ const getMember = (id: string) => {
       
       <!-- Tasks for specific members -->
       <div 
-        v-for="memberId in Object.keys(tasksByMember)" 
+        v-for="memberId in filteredMemberIds" 
         :key="memberId"
         class="tasks-section"
-        v-if="memberId !== 'everyone' && tasksByMember[memberId] && tasksByMember[memberId].length > 0"
       >
         <h3>Tasks for {{ getMember(memberId)?.name }}</h3>
         <div class="tasks-grid">
@@ -130,7 +140,13 @@ const getMember = (id: string) => {
     
     <section class="hero">
       <div class="hero-content">
-        <h1>Welcome to KidPoints!</h1>
+        <div v-if="currentMember" class="current-user-welcome">
+          <div class="current-user-avatar" :style="{ backgroundColor: currentMember.avatarColor }">
+            {{ currentMember.name.charAt(0).toUpperCase() }}
+          </div>
+          <h1>欢迎回来，{{ currentMember.name }}!</h1>
+        </div>
+        <h1 v-else>Welcome to KidPoints!</h1>
         <p class="hero-subtitle">A fun way to reward good behavior and track achievements</p>
         <div class="hero-buttons">
           <button class="btn btn-primary" @click="router.push('/tasks')">View Tasks</button>
@@ -244,6 +260,28 @@ const getMember = (id: string) => {
   color: var(--gray-900);
 }
 
+.current-user-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.current-user-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xxl);
+  font-weight: bold;
+  color: white;
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-md);
+  border: 3px solid white;
+}
+
 .hero-subtitle {
   font-size: var(--font-size-xl);
   margin-bottom: var(--space-xl);
@@ -348,6 +386,57 @@ const getMember = (id: string) => {
 }
 
 .points-label {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+}
+
+/* Current User Summary Styles */
+.current-user-summary {
+  margin-bottom: var(--space-xl);
+}
+
+.current-user-summary h2 {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.user-stats {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xl);
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  background-color: var(--white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 150px;
+  transition: transform 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--space-sm);
+}
+
+.stat-value {
+  font-size: var(--font-size-xxl);
+  font-weight: bold;
+  color: var(--primary-dark);
+  margin-bottom: var(--space-xs);
+}
+
+.stat-label {
   font-size: var(--font-size-sm);
   color: var(--gray-600);
 }

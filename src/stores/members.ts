@@ -20,6 +20,8 @@ export interface PointHistoryEntry {
 
 export interface MembersStore {
   members: Ref<Member[]>
+  currentMember: Member | null
+  setCurrentMember: (memberId: string) => void
   addMember: (name: string, avatarColor: string) => void
   updateMember: (id: string, data: Partial<Member>) => void
   deleteMember: (id: string) => void
@@ -28,18 +30,37 @@ export interface MembersStore {
   removePoints: (memberId: string, points: number, reason: string, rewardId?: string) => void
   getMemberPointsHistory: (memberId: string) => PointHistoryEntry[]
   getLeaderboard: () => Member[]
+  getMembersRefs: () => Ref<Member>[]
   loadMembers: () => void
   saveMembers: () => void
 }
 
 export function useMembers(): MembersStore {
   const members = ref<Member[]>([])
+  const currentMember = ref<Member | null>(null)
 
   // Load members from localStorage
   const loadMembers = () => {
     const savedMembers = localStorage.getItem('kidpoints-members')
     if (savedMembers) {
       members.value = JSON.parse(savedMembers)
+      
+      // Load current member if exists
+      const currentMemberId = localStorage.getItem('kidpoints-current-member')
+      if (currentMemberId) {
+        const member = getMemberById(currentMemberId)
+        if (member) {
+          currentMember.value = member
+        } else if (members.value.length > 0) {
+          // If saved current member doesn't exist anymore, use the first member
+          currentMember.value = members.value[0]
+          localStorage.setItem('kidpoints-current-member', members.value[0].id)
+        }
+      } else if (members.value.length > 0) {
+        // If no current member is saved, use the first member
+        currentMember.value = members.value[0]
+        localStorage.setItem('kidpoints-current-member', members.value[0].id)
+      }
     }
   }
 
@@ -137,9 +158,26 @@ export function useMembers(): MembersStore {
   const leaderboard = computed(() => {
     return [...members.value].sort((a, b) => b.points - a.points)
   })
+  
+  // Get all members as individual refs
+  const getMembersRefs = (): Ref<Member>[] => {
+    return members.value.map(member => ref(member))
+  }
+  
+  // Set current member
+  const setCurrentMember = (memberId: string) => {
+    const member = getMemberById(memberId)
+    if (member) {
+      currentMember.value = member
+      // Save current member ID to localStorage
+      localStorage.setItem('kidpoints-current-member', memberId)
+    }
+  }
 
   return {
     members,
+    get currentMember() { return currentMember.value },
+    setCurrentMember,
     addMember,
     updateMember,
     deleteMember,
@@ -148,6 +186,7 @@ export function useMembers(): MembersStore {
     removePoints,
     getMemberPointsHistory,
     getLeaderboard: () => leaderboard.value,
+    getMembersRefs,
     loadMembers,
     saveMembers
   }
