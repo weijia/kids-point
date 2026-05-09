@@ -1,5 +1,13 @@
 import { ref } from 'vue'
 
+export interface WebDAVSyncConfig {
+  url: string
+  username: string
+  password: string
+  enabled: boolean
+  lastSyncTime: number | null
+}
+
 export interface Settings {
   adminPassword: string | null
   isAuthenticated: boolean
@@ -7,6 +15,7 @@ export interface Settings {
   lastWeeklyReset: number
   notificationsEnabled: boolean
   theme: 'light' | 'dark'
+  webdavSync: WebDAVSyncConfig | null
 }
 
 export interface SettingsStore {
@@ -19,6 +28,8 @@ export interface SettingsStore {
   resetData: () => void
   loadSettings: () => void
   saveSettings: () => void
+  configureWebDAV: (config: WebDAVSyncConfig) => void
+  disableWebDAV: () => void
 }
 
 export function useSettings(): SettingsStore {
@@ -28,12 +39,12 @@ export function useSettings(): SettingsStore {
     lastDailyReset: Date.now(),
     lastWeeklyReset: Date.now(),
     notificationsEnabled: true,
-    theme: 'light'
+    theme: 'light',
+    webdavSync: null
   }
   
   const settings = ref<Settings>({ ...defaultSettings })
 
-  // Load settings from localStorage
   const loadSettings = () => {
     const savedSettings = localStorage.getItem('kidpoints-settings')
     if (savedSettings) {
@@ -41,25 +52,20 @@ export function useSettings(): SettingsStore {
     }
   }
 
-  // Save settings to localStorage
   const saveSettings = () => {
     localStorage.setItem('kidpoints-settings', JSON.stringify(settings.value))
   }
 
-  // Update settings
   const updateSettings = (data: Partial<Settings>) => {
     settings.value = { ...settings.value, ...data }
     saveSettings()
   }
 
-  // Set admin password
   const setAdminPassword = (password: string) => {
-    // In a real app, you'd want to hash this password
     settings.value.adminPassword = password
     saveSettings()
   }
 
-  // Authenticate
   const login = (password: string): boolean => {
     if (settings.value.adminPassword === password) {
       settings.value.isAuthenticated = true
@@ -69,27 +75,37 @@ export function useSettings(): SettingsStore {
     return false
   }
 
-  // Logout
   const logout = () => {
     settings.value.isAuthenticated = false
     saveSettings()
   }
 
-  // Reset all data
   const resetData = () => {
-    // Clear all data except settings
     localStorage.removeItem('kidpoints-members')
     localStorage.removeItem('kidpoints-tasks')
     localStorage.removeItem('kidpoints-rewards')
     localStorage.removeItem('kidpoints-achievements')
     
-    // Reset settings to default (but keep the password)
     const currentPassword = settings.value.adminPassword
+    const webdavSync = settings.value.webdavSync
     settings.value = { 
       ...defaultSettings,
-      adminPassword: currentPassword
+      adminPassword: currentPassword,
+      webdavSync
     }
     saveSettings()
+  }
+
+  const configureWebDAV = (config: WebDAVSyncConfig) => {
+    settings.value.webdavSync = config
+    saveSettings()
+  }
+
+  const disableWebDAV = () => {
+    if (settings.value.webdavSync) {
+      settings.value.webdavSync.enabled = false
+      saveSettings()
+    }
   }
 
   return {
@@ -103,6 +119,8 @@ export function useSettings(): SettingsStore {
     logout,
     resetData,
     loadSettings,
-    saveSettings
+    saveSettings,
+    configureWebDAV,
+    disableWebDAV
   }
 }

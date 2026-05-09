@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import type { SettingsStore } from '../stores/settings'
+import type { SettingsStore, WebDAVSyncConfig } from '../stores/settings'
 import type { RewardsStore } from '../stores/rewards'
 import type { AchievementsStore } from '../stores/achievements'
+import { databaseService, type SyncStatus } from '../services/database'
 
 const settingsStore = inject('settingsStore') as SettingsStore
 const rewardsStore = inject('rewardsStore') as RewardsStore
 const achievementsStore = inject('achievementsStore') as AchievementsStore
 const router = useRouter()
 
-// New reward form data
 const newReward = ref({
   title: '',
   description: '',
@@ -18,7 +18,6 @@ const newReward = ref({
   points: 50
 })
 
-// New achievement form data
 const newAchievement = ref({
   title: '',
   description: '',
@@ -30,7 +29,16 @@ const newAchievement = ref({
   }
 })
 
-// Icon options
+const webdavConfig = ref({
+  url: '',
+  username: '',
+  password: '',
+  enabled: false
+})
+
+const syncStatus = ref<SyncStatus>('idle')
+const syncMessage = ref('')
+
 const rewardIconOptions = [
   '🎁', '🧸', '🎮', '🍦', '🍕', '🎬', '📱', '⌚', '🎨', '📚', '🎯', '🎪', '🏖️', '🎭', '🎠'
 ]
@@ -39,20 +47,14 @@ const achievementIconOptions = [
   '🏆', '🥇', '🏅', '🎖️', '⭐', '🌟', '🚀', '🔥', '💯', '👑', '💪', '🧠', '❤️', '🌈', '✨'
 ]
 
-// Active tab
 const activeTab = ref('rewards')
 
-// Get all rewards
-const rewards = computed(() => {
-  return rewardsStore.rewards
-})
+const rewards = computed(() => rewardsStore.rewards)
+const achievements = computed(() => achievementsStore.achievements)
 
-// Get all achievements
-const achievements = computed(() => {
-  return achievementsStore.achievements
-})
+const hasWebDAVConfig = computed(() => settingsStore.settings.webdavSync !== null)
+const isWebDAVEnabled = computed(() => settingsStore.settings.webdavSync?.enabled === true)
 
-// Add a new reward
 const addReward = () => {
   if (newReward.value.title.trim() === '') return
   
@@ -63,7 +65,6 @@ const addReward = () => {
     points: newReward.value.points
   })
   
-  // Reset form
   newReward.value = {
     title: '',
     description: '',
@@ -72,7 +73,6 @@ const addReward = () => {
   }
 }
 
-// Add a new achievement
 const addAchievement = () => {
   if (newAchievement.value.title.trim() === '') return
   
@@ -83,7 +83,6 @@ const addAchievement = () => {
     requirement: { ...newAchievement.value.requirement }
   })
   
-  // Reset form
   newAchievement.value = {
     title: '',
     description: '',
@@ -96,7 +95,6 @@ const addAchievement = () => {
   }
 }
 
-// Delete a reward
 const deleteReward = (id: string) => {
   const confirmed = confirm('Are you sure you want to delete this reward?')
   if (confirmed) {
@@ -104,7 +102,6 @@ const deleteReward = (id: string) => {
   }
 }
 
-// Delete an achievement
 const deleteAchievement = (id: string) => {
   const confirmed = confirm('Are you sure you want to delete this achievement?')
   if (confirmed) {
@@ -112,7 +109,100 @@ const deleteAchievement = (id: string) => {
   }
 }
 
-// Reset all data
+const saveWebDAVConfig = () => {
+  const config: WebDAVSyncConfig = {
+    url: webdavConfig.value.url,
+    username: webdavConfig.value.username,
+    password: webdavConfig.value.password,
+    enabled: webdavConfig.value.enabled,
+    lastSyncTime: settingsStore.settings.webdavSync?.lastSyncTime || null
+  }
+  settingsStore.configureWebDAV(config)
+  syncMessage.value = 'WebDAV configuration saved!'
+  setTimeout(() => syncMessage.value = '', 3000)
+}
+
+const testWebDAVConnection = async () => {
+  try {
+    syncStatus.value = 'syncing'
+    syncMessage.value = 'Testing connection...'
+    
+    await databaseService.initialize('kidspoints')
+    await databaseService.configureWebDAV({
+      url: webdavConfig.value.url,
+      username: webdavConfig.value.username,
+      password: webdavConfig.value.password
+    })
+    
+    syncMessage.value = 'Connection test successful!'
+    syncStatus.value = 'synced'
+    setTimeout(() => {
+      syncMessage.value = ''
+      syncStatus.value = 'idle'
+    }, 3000)
+  } catch (error) {
+    syncMessage.value = 'Connection failed: ' + (error as Error).message
+    syncStatus.value = 'error'
+  }
+}
+
+const syncNow = async () => {
+  try {
+    syncStatus.value = 'syncing'
+    syncMessage.value = 'Syncing data to WebDAV...'
+    
+    await databaseService.syncToWebDAV()
+    
+    if (settingsStore.settings.webdavSync) {
+      settingsStore.configureWebDAV({
+        ...settingsStore.settings.webdavSync,
+        lastSyncTime: Date.now()
+      })
+    }
+    
+    syncMessage.value = 'Sync completed successfully!'
+    syncStatus.value = 'synced'
+    setTimeout(() => {
+      syncMessage.value = ''
+      syncStatus.value = 'idle'
+    }, 3000)
+  } catch (error) {
+    syncMessage.value = 'Sync failed: ' + (error as Error).message
+    syncStatus.value = 'error'
+  }
+}
+
+const loadFromWebDAV = async () => {
+  try {
+    syncStatus.value = 'syncing'
+    syncMessage.value = 'Loading data from WebDAV...'
+    
+    await databaseService.loadFromWebDAV()
+    
+    syncMessage.value = 'Data loaded successfully! Please refresh the page.'
+    syncStatus.value = 'synced'
+    setTimeout(() => {
+      syncMessage.value = ''
+      syncStatus.value = 'idle'
+    }, 3000)
+  } catch (error) {
+    syncMessage.value = 'Load failed: ' + (error as Error).message
+    syncStatus.value = 'error'
+  }
+}
+
+const disableWebDAV = () => {
+  settingsStore.disableWebDAV()
+  webdavConfig.value.enabled = false
+  syncMessage.value = 'WebDAV sync disabled'
+  setTimeout(() => syncMessage.value = '', 3000)
+}
+
+const formatLastSync = computed(() => {
+  if (!settingsStore.settings.webdavSync?.lastSyncTime) return 'Never'
+  return new Date(settingsStore.settings.webdavSync.lastSyncTime).toLocaleString()
+})
+
 const resetAllData = () => {
   const confirmed = confirm(
     'WARNING: This will reset all members, tasks, rewards, and achievements. This action cannot be undone. Are you sure?'
@@ -130,10 +220,20 @@ const resetAllData = () => {
   }
 }
 
-// Logout
 const logout = () => {
   settingsStore.logout()
   router.push('/admin-login')
+}
+
+const initWebDAVForm = () => {
+  if (settingsStore.settings.webdavSync) {
+    webdavConfig.value = {
+      url: settingsStore.settings.webdavSync.url,
+      username: settingsStore.settings.webdavSync.username,
+      password: settingsStore.settings.webdavSync.password,
+      enabled: settingsStore.settings.webdavSync.enabled
+    }
+  }
 }
 </script>
 
@@ -163,6 +263,14 @@ const logout = () => {
       
       <button 
         class="tab-button" 
+        :class="{ active: activeTab === 'webdav' }"
+        @click="activeTab = 'webdav'; initWebDAVForm()"
+      >
+        ☁️ WebDAV Sync
+      </button>
+      
+      <button 
+        class="tab-button" 
         :class="{ active: activeTab === 'settings' }"
         @click="activeTab = 'settings'"
       >
@@ -170,7 +278,6 @@ const logout = () => {
       </button>
     </div>
     
-    <!-- Rewards Tab -->
     <div class="tab-content" v-if="activeTab === 'rewards'">
       <div class="card form-card">
         <h2>Create New Reward</h2>
@@ -247,7 +354,6 @@ const logout = () => {
       </div>
     </div>
     
-    <!-- Achievements Tab -->
     <div class="tab-content" v-if="activeTab === 'achievements'">
       <div class="card form-card">
         <h2>Create New Achievement</h2>
@@ -351,8 +457,114 @@ const logout = () => {
         </div>
       </div>
     </div>
+
+    <div class="tab-content" v-if="activeTab === 'webdav'">
+      <div class="card webdav-card">
+        <h2>☁️ WebDAV Synchronization</h2>
+        <p class="webdav-description">
+          Configure WebDAV sync to backup and synchronize your data across devices.
+          Data will be stored using the universal-sync-v2 format.
+        </p>
+        
+        <div v-if="syncMessage" class="sync-message" :class="syncStatus">
+          {{ syncMessage }}
+        </div>
+        
+        <div class="form-section">
+          <h3>Server Configuration</h3>
+          
+          <div class="input-group">
+            <label for="webdav-url">WebDAV URL</label>
+            <input 
+              type="text" 
+              id="webdav-url" 
+              v-model="webdavConfig.url" 
+              placeholder="https://your-webdav-server.com/dav/"
+            />
+          </div>
+          
+          <div class="form-row">
+            <div class="input-group">
+              <label for="webdav-username">Username</label>
+              <input 
+                type="text" 
+                id="webdav-username" 
+                v-model="webdavConfig.username" 
+                placeholder="your-username"
+              />
+            </div>
+            
+            <div class="input-group">
+              <label for="webdav-password">Password</label>
+              <input 
+                type="password" 
+                id="webdav-password" 
+                v-model="webdavConfig.password" 
+                placeholder="your-password"
+              />
+            </div>
+          </div>
+          
+          <div class="input-group checkbox-group">
+            <label class="checkbox-label">
+              <input 
+                type="checkbox" 
+                v-model="webdavConfig.enabled"
+              />
+              <span>Enable automatic WebDAV sync</span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="button-group">
+          <button class="btn btn-secondary" @click="testWebDAVConnection">
+            🔗 Test Connection
+          </button>
+          <button class="btn btn-primary" @click="saveWebDAVConfig">
+            💾 Save Configuration
+          </button>
+        </div>
+        
+        <div v-if="hasWebDAVConfig" class="sync-section">
+          <h3>Sync Status</h3>
+          
+          <div class="sync-info">
+            <div class="sync-info-item">
+              <span class="label">Status:</span>
+              <span class="value" :class="'status-' + syncStatus">
+                {{ syncStatus === 'idle' ? 'Ready' : 
+                   syncStatus === 'syncing' ? 'Syncing...' : 
+                   syncStatus === 'synced' ? 'Synced' : 'Error' }}
+              </span>
+            </div>
+            <div class="sync-info-item">
+              <span class="label">Last Sync:</span>
+              <span class="value">{{ formatLastSync }}</span>
+            </div>
+            <div class="sync-info-item">
+              <span class="label">Enabled:</span>
+              <span class="value">{{ isWebDAVEnabled ? 'Yes' : 'No' }}</span>
+            </div>
+          </div>
+          
+          <div class="button-group">
+            <button class="btn btn-primary" @click="syncNow" :disabled="syncStatus === 'syncing'">
+              📤 Sync to WebDAV
+            </button>
+            <button class="btn btn-secondary" @click="loadFromWebDAV" :disabled="syncStatus === 'syncing'">
+              📥 Load from WebDAV
+            </button>
+          </div>
+          
+          <div class="danger-zone">
+            <button class="btn btn-danger" @click="disableWebDAV">
+              🚫 Disable WebDAV Sync
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     
-    <!-- Settings Tab -->
     <div class="tab-content" v-if="activeTab === 'settings'">
       <div class="card settings-card">
         <h2>System Settings</h2>
@@ -389,6 +601,7 @@ const logout = () => {
   justify-content: center;
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
 }
 
 .tab-button {
@@ -416,11 +629,52 @@ const logout = () => {
   gap: var(--space-xl);
 }
 
-.form-card, .settings-card {
+.form-card, .settings-card, .webdav-card {
   background-color: var(--white);
   border-radius: var(--radius-lg);
   padding: var(--space-xl);
   box-shadow: var(--shadow-md);
+}
+
+.webdav-description {
+  color: var(--gray-600);
+  margin-bottom: var(--space-lg);
+}
+
+.sync-message {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  text-align: center;
+}
+
+.sync-message.idle {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.sync-message.syncing {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.sync-message.synced {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.sync-message.error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.form-section, .sync-section {
+  margin-top: var(--space-lg);
+}
+
+.form-section h3, .sync-section h3 {
+  margin-bottom: var(--space-md);
+  color: var(--gray-800);
 }
 
 .form-row {
@@ -536,6 +790,61 @@ const logout = () => {
   margin-bottom: var(--space-md);
 }
 
+.button-group {
+  display: flex;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.checkbox-group {
+  margin-top: var(--space-md);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
+.sync-info {
+  background-color: var(--gray-100);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+}
+
+.sync-info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-xs) 0;
+}
+
+.sync-info-item .label {
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.sync-info-item .value {
+  color: var(--gray-900);
+}
+
+.status-idle { color: var(--gray-600); }
+.status-syncing { color: var(--primary); }
+.status-synced { color: #155724; }
+.status-error { color: #721c24; }
+
+.danger-zone {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--gray-200);
+}
+
 @media (max-width: 768px) {
   .form-row {
     flex-direction: column;
@@ -545,6 +854,14 @@ const logout = () => {
   .admin-tabs {
     flex-direction: column;
     gap: var(--space-xs);
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .button-group .btn {
+    width: 100%;
   }
 }
 </style>
