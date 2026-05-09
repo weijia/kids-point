@@ -1,193 +1,165 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed } from 'vue'
 
 export interface Member {
   id: string
   name: string
-  avatarColor: string
+  color: string
   points: number
   createdAt: number
-  pointsHistory: PointHistoryEntry[]
-  isAdmin?: boolean
+  completedTasks: string[]
+  redeemedRewards: string[]
 }
 
-export interface PointHistoryEntry {
-  date: number
-  points: number
-  reason: string
-  taskId?: string
-  rewardId?: string
-}
+const members = ref<Member[]>([])
+const currentMemberId = ref<string | null>(null)
 
-export interface MembersStore {
-  members: Ref<Member[]>
-  currentMember: Member | null
-  setCurrentMember: (memberId: string) => void
-  addMember: (name: string, avatarColor: string) => void
-  updateMember: (id: string, data: Partial<Member>) => void
-  deleteMember: (id: string) => void
-  getMemberById: (id: string) => Member | undefined
-  addPoints: (memberId: string, points: number, reason: string, taskId?: string) => void
-  removePoints: (memberId: string, points: number, reason: string, rewardId?: string) => void
-  getMemberPointsHistory: (memberId: string) => PointHistoryEntry[]
-  getLeaderboard: () => Member[]
-  getMembersRefs: () => Ref<Member>[]
-  loadMembers: () => void
-  saveMembers: () => void
-}
-
-export function useMembers(): MembersStore {
-  const members = ref<Member[]>([])
-  const currentMember = ref<Member | null>(null)
-
-  // Load members from localStorage
-  const loadMembers = () => {
-    const savedMembers = localStorage.getItem('kidpoints-members')
-    if (savedMembers) {
-      members.value = JSON.parse(savedMembers)
-      
-      // Load current member if exists
-      const currentMemberId = localStorage.getItem('kidpoints-current-member')
-      if (currentMemberId) {
-        const member = getMemberById(currentMemberId)
-        if (member) {
-          currentMember.value = member
-        } else if (members.value.length > 0) {
-          // If saved current member doesn't exist anymore, use the first member
-          currentMember.value = members.value[0]
-          localStorage.setItem('kidpoints-current-member', members.value[0].id)
-        }
-      } else if (members.value.length > 0) {
-        // If no current member is saved, use the first member
-        currentMember.value = members.value[0]
-        localStorage.setItem('kidpoints-current-member', members.value[0].id)
-      }
-    }
+const loadMembers = () => {
+  const savedMembers = localStorage.getItem('kidpoints-members')
+  if (savedMembers) {
+    members.value = JSON.parse(savedMembers)
   }
-
-  // Save members to localStorage
-  const saveMembers = () => {
-    localStorage.setItem('kidpoints-members', JSON.stringify(members.value))
+  
+  const savedCurrentMember = localStorage.getItem('kidpoints-current-member')
+  if (savedCurrentMember) {
+    currentMemberId.value = savedCurrentMember
   }
+}
 
-  // Add a new member
-  const addMember = (name: string, avatarColor: string) => {
+const saveMembers = () => {
+  localStorage.setItem('kidpoints-members', JSON.stringify(members.value))
+}
+
+const saveCurrentMember = () => {
+  if (currentMemberId.value) {
+    localStorage.setItem('kidpoints-current-member', currentMemberId.value)
+  } else {
+    localStorage.removeItem('kidpoints-current-member')
+  }
+}
+
+const currentMember = computed(() => {
+  return members.value.find(m => m.id === currentMemberId.value) || null
+})
+
+export function useMembers() {
+  const addMember = (name: string, color: string) => {
     const newMember: Member = {
       id: Date.now().toString(),
       name,
-      avatarColor,
+      color,
       points: 0,
       createdAt: Date.now(),
-      pointsHistory: [],
-      isAdmin: members.value.length === 0 // First member becomes admin
+      completedTasks: [],
+      redeemedRewards: []
     }
-    
     members.value.push(newMember)
     saveMembers()
+    
+    if (!currentMemberId.value) {
+      setCurrentMember(newMember.id)
+    }
+    
+    return newMember
   }
 
-  // Update an existing member
   const updateMember = (id: string, data: Partial<Member>) => {
-    const index = members.value.findIndex(member => member.id === id)
+    const index = members.value.findIndex(m => m.id === id)
     if (index !== -1) {
       members.value[index] = { ...members.value[index], ...data }
       saveMembers()
     }
   }
 
-  // Delete a member
   const deleteMember = (id: string) => {
-    members.value = members.value.filter(member => member.id !== id)
+    members.value = members.value.filter(m => m.id !== id)
+    if (currentMemberId.value === id) {
+      currentMemberId.value = members.value.length > 0 ? members.value[0].id : null
+      saveCurrentMember()
+    }
     saveMembers()
   }
 
-  // Get a member by ID
-  const getMemberById = (id: string): Member | undefined => {
-    return members.value.find(member => member.id === id)
+  const setCurrentMember = (id: string | null) => {
+    currentMemberId.value = id
+    saveCurrentMember()
   }
 
-  // Add points to a member
-  const addPoints = (memberId: string, points: number, reason: string, taskId?: string) => {
-    const member = getMemberById(memberId)
+  const addPoints = (memberId: string, points: number) => {
+    const member = members.value.find(m => m.id === memberId)
     if (member) {
-      // Add points to the member
       member.points += points
-      
-      // Add entry to points history
-      member.pointsHistory.push({
-        date: Date.now(),
-        points,
-        reason,
-        taskId
-      })
-      
-      // Save changes
       saveMembers()
     }
   }
 
-  // Remove points from a member (for rewards)
-  const removePoints = (memberId: string, points: number, reason: string, rewardId?: string) => {
-    const member = getMemberById(memberId)
-    if (member) {
-      // Ensure points don't go below zero
-      const pointsToRemove = Math.min(points, member.points)
-      
-      // Remove points from the member
-      member.points -= pointsToRemove
-      
-      // Add entry to points history (with negative points)
-      member.pointsHistory.push({
-        date: Date.now(),
-        points: -pointsToRemove,
-        reason,
-        rewardId
-      })
-      
-      // Save changes
+  const deductPoints = (memberId: string, points: number) => {
+    const member = members.value.find(m => m.id === memberId)
+    if (member && member.points >= points) {
+      member.points -= points
+      saveMembers()
+      return true
+    }
+    return false
+  }
+
+  const completeTask = (memberId: string, taskId: string) => {
+    const member = members.value.find(m => m.id === memberId)
+    if (member && !member.completedTasks.includes(taskId)) {
+      member.completedTasks.push(taskId)
       saveMembers()
     }
   }
 
-  // Get points history for a specific member
-  const getMemberPointsHistory = (memberId: string): PointHistoryEntry[] => {
-    const member = getMemberById(memberId)
-    return member ? member.pointsHistory : []
+  const revertTask = (memberId: string, taskId: string) => {
+    const member = members.value.find(m => m.id === memberId)
+    if (member) {
+      member.completedTasks = member.completedTasks.filter(id => id !== taskId)
+      saveMembers()
+    }
   }
 
-  // Get leaderboard (sorted by points)
-  const leaderboard = computed(() => {
-    return [...members.value].sort((a, b) => b.points - a.points)
-  })
-  
-  // Get all members as individual refs
-  const getMembersRefs = (): Ref<Member>[] => {
-    return members.value.map(member => ref(member))
+  const isTaskCompleted = (memberId: string, taskId: string) => {
+    const member = members.value.find(m => m.id === memberId)
+    return member?.completedTasks.includes(taskId) || false
   }
-  
-  // Set current member
-  const setCurrentMember = (memberId: string) => {
-    const member = getMemberById(memberId)
-    if (member) {
-      currentMember.value = member
-      // Save current member ID to localStorage
-      localStorage.setItem('kidpoints-current-member', memberId)
+
+  const redeemReward = (memberId: string, rewardId: string) => {
+    const member = members.value.find(m => m.id === memberId)
+    if (member && !member.redeemedRewards.includes(rewardId)) {
+      member.redeemedRewards.push(rewardId)
+      saveMembers()
     }
+  }
+
+  const isRewardRedeemed = (memberId: string, rewardId: string) => {
+    const member = members.value.find(m => m.id === memberId)
+    return member?.redeemedRewards.includes(rewardId) || false
+  }
+
+  const resetMemberData = () => {
+    members.value.forEach(member => {
+      member.completedTasks = []
+      member.redeemedRewards = []
+    })
+    saveMembers()
   }
 
   return {
     members,
-    get currentMember() { return currentMember.value },
-    setCurrentMember,
+    currentMember,
+    currentMemberId,
     addMember,
     updateMember,
     deleteMember,
-    getMemberById,
+    setCurrentMember,
     addPoints,
-    removePoints,
-    getMemberPointsHistory,
-    getLeaderboard: () => leaderboard.value,
-    getMembersRefs,
-    loadMembers,
-    saveMembers
+    deductPoints,
+    completeTask,
+    revertTask,
+    isTaskCompleted,
+    redeemReward,
+    isRewardRedeemed,
+    resetMemberData,
+    loadMembers
   }
 }

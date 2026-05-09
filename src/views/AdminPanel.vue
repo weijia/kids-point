@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import type { SettingsStore, WebDAVSyncConfig } from '../stores/settings'
-import type { RewardsStore } from '../stores/rewards'
-import type { AchievementsStore } from '../stores/achievements'
+import { useSettings, type WebDAVSyncConfig } from '../stores/settings'
+import { useRewards } from '../stores/rewards'
+import { useAchievements } from '../stores/achievements'
 import { databaseService, type SyncStatus } from '../services/database'
 
 const { t } = useI18n()
 const router = useRouter()
-const settingsStore = inject('settingsStore') as SettingsStore
-const rewardsStore = inject('rewardsStore') as RewardsStore
-const achievementsStore = inject('achievementsStore') as AchievementsStore
+const settingsStore = useSettings()
+const rewardsStore = useRewards()
+const achievementsStore = useAchievements()
 
 const newReward = ref({
   title: '',
@@ -329,12 +329,12 @@ const initWebDAVForm = () => {
       <div class="rewards-list">
         <h2>{{ t('admin.rewards') }}</h2>
         
-        <div v-if="rewards.length === 0" class="empty-state">
+        <div v-if="rewards.value.length === 0" class="empty-state">
           <p>{{ t('store.noRewards') }}</p>
         </div>
         
         <div v-else class="admin-list">
-          <div v-for="reward in rewards" :key="reward.id" class="admin-list-item">
+          <div v-for="reward in rewards.value" :key="reward.id" class="admin-list-item">
             <div class="item-icon">{{ reward.icon }}</div>
             <div class="item-content">
               <h3>{{ reward.title }}</h3>
@@ -417,12 +417,12 @@ const initWebDAVForm = () => {
       <div class="achievements-list">
         <h2>{{ t('admin.achievements') }}</h2>
         
-        <div v-if="achievements.length === 0" class="empty-state">
+        <div v-if="achievements.value.length === 0" class="empty-state">
           <p>{{ t('achievements.noAchievements') }}</p>
         </div>
         
         <div v-else class="admin-list">
-          <div v-for="achievement in achievements" :key="achievement.id" class="admin-list-item">
+          <div v-for="achievement in achievements.value" :key="achievement.id" class="admin-list-item">
             <div class="item-icon">{{ achievement.icon }}</div>
             <div class="item-content">
               <h3>{{ achievement.title }}</h3>

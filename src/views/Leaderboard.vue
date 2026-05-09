@@ -1,32 +1,27 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Bar } from 'vue-chartjs'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
-import type { MembersStore, Member, PointHistoryEntry } from '../stores/members'
+import { useMembers } from '../stores/members'
+import type { Member } from '../stores/members'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
 const { t } = useI18n()
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
-const membersStore = inject('membersStore') as MembersStore
-
-// Selected member for history
-const selectedMember = ref<Member | null>(null)
-
-// Chart time range
-const timeRange = ref('week')
+const membersStore = useMembers()
 
 // Get all members sorted by points (leaderboard)
 const leaderboard = computed(() => {
-  return membersStore.getLeaderboard()
+  return [...membersStore.members.value].sort((a, b) => b.points - a.points)
 })
 
 // Chart data for points comparison
 const chartData = computed(() => {
-  const memberNames = leaderboard.value.map(member => member.name)
-  const memberPoints = leaderboard.value.map(member => member.points)
-  const memberColors = leaderboard.value.map(member => member.avatarColor)
+  const memberNames = leaderboard.value.map((member: Member) => member.name)
+  const memberPoints = leaderboard.value.map((member: Member) => member.points)
+  const memberColors = leaderboard.value.map((member: Member) => member.color)
   
   return {
     labels: memberNames,
@@ -67,57 +62,6 @@ const chartOptions = {
     }
   }
 }
-
-// Filter point history by time range
-const getFilteredHistory = (history: PointHistoryEntry[]) => {
-  const now = Date.now()
-  const oneDay = 24 * 60 * 60 * 1000
-  const oneWeek = 7 * oneDay
-  const oneMonth = 30 * oneDay
-  
-  let cutoff = now
-  
-  if (timeRange.value === 'week') {
-    cutoff = now - oneWeek
-  } else if (timeRange.value === 'month') {
-    cutoff = now - oneMonth
-  } else if (timeRange.value === 'year') {
-    cutoff = now - (365 * oneDay)
-  }
-  
-  return history.filter(entry => entry.date >= cutoff)
-}
-
-// History for selected member
-const memberHistory = computed(() => {
-  if (!selectedMember.value) return []
-  
-  const history = membersStore.getMemberPointsHistory(selectedMember.value.id)
-  const filteredHistory = getFilteredHistory(history)
-  
-  // Sort by date (newest first)
-  return filteredHistory.sort((a, b) => b.date - a.date)
-})
-
-// Format date
-const formatDate = (timestamp: number) => {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-// View member history
-const viewMemberHistory = (member: Member) => {
-  selectedMember.value = member
-}
-
-// Close history modal
-const closeHistoryModal = () => {
-  selectedMember.value = null
-}
 </script>
 
 <template>
@@ -153,13 +97,12 @@ const closeHistoryModal = () => {
           v-for="(member, index) in leaderboard" 
           :key="member.id" 
           class="ranking-item"
-          @click="viewMemberHistory(member)"
         >
           <div class="rank">{{ index + 1 }}</div>
           
           <MemberAvatar 
             :name="member.name" 
-            :color="member.avatarColor" 
+            :color="member.color" 
             size="md" 
           />
           
@@ -174,53 +117,6 @@ const closeHistoryModal = () => {
           
           <button class="btn btn-primary view-history-btn">{{ t('leaderboard.viewHistory') }}</button>
         </div>
-      </div>
-    </div>
-    
-    <!-- Member History Modal -->
-    <div class="modal-backdrop" v-if="selectedMember" @click="closeHistoryModal">
-      <div class="modal history-modal" @click.stop>
-        <div class="modal-header">
-          <div class="member-header">
-            <MemberAvatar 
-              :name="selectedMember.name" 
-              :color="selectedMember.avatarColor" 
-              size="md" 
-            />
-            <h2>{{ selectedMember.name }}'s {{ t('leaderboard.history') }}</h2>
-          </div>
-          
-          <div class="time-filter">
-            <label for="time-range">{{ t('leaderboard.timeRange') }}:</label>
-            <select id="time-range" v-model="timeRange">
-              <option value="week">{{ t('leaderboard.last7Days') }}</option>
-              <option value="month">{{ t('leaderboard.last30Days') }}</option>
-              <option value="year">{{ t('leaderboard.lastYear') }}</option>
-              <option value="all">{{ t('leaderboard.allTime') }}</option>
-            </select>
-          </div>
-        </div>
-        
-        <div v-if="memberHistory.length === 0" class="empty-state">
-          <p>{{ t('leaderboard.noHistory') }}</p>
-        </div>
-        
-        <div v-else class="history-list">
-          <div v-for="(entry, index) in memberHistory" :key="index" class="history-item">
-            <div class="history-date">
-              {{ formatDate(entry.date) }}
-            </div>
-            
-            <div class="history-details">
-              <div class="history-reason">{{ entry.reason }}</div>
-              <div class="history-points" :class="{ 'negative': entry.points < 0 }">
-                {{ entry.points > 0 ? '+' : '' }}{{ entry.points }} {{ t('leaderboard.points') }}
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <button class="btn btn-primary close-btn" @click="closeHistoryModal">{{ t('common.close') }}</button>
       </div>
     </div>
   </div>

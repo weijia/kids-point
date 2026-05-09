@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { RewardsStore, Reward } from '../stores/rewards'
-import type { MembersStore } from '../stores/members'
+import { useRewards } from '../stores/rewards'
+import type { Reward } from '../stores/rewards'
+import { useMembers } from '../stores/members'
 import RewardCard from '../components/reward/RewardCard.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
 const { t } = useI18n()
-const rewardsStore = inject('rewardsStore') as RewardsStore
-const membersStore = inject('membersStore') as MembersStore
+const rewardsStore = useRewards()
+const membersStore = useMembers()
 
 // Selected member for the store
 const selectedMemberId = ref('')
@@ -50,18 +51,12 @@ const selectedMember = computed(() => {
   if (!selectedMemberId.value && members.value.length > 0) {
     selectedMemberId.value = members.value[0].id
   }
-  return membersStore.getMemberById(selectedMemberId.value)
+  return members.value.find(m => m.id === selectedMemberId.value)
 })
 
 // Get all rewards
 const rewards = computed(() => {
-  return rewardsStore.rewards
-})
-
-// Get redemption history for selected member
-const redemptionHistory = computed(() => {
-  if (!selectedMember.value) return []
-  return rewardsStore.getRedemptionsByMember(selectedMember.value.id)
+  return rewardsStore.rewards.value
 })
 
 // Handle reward redemption
@@ -163,15 +158,6 @@ const cancelDelete = () => {
   showDeleteConfirm.value = false
   rewardToDelete.value = null
 }
-
-// Format date
-const formatDate = (timestamp: number) => {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
 </script>
 
 <template>
@@ -205,7 +191,7 @@ const formatDate = (timestamp: number) => {
         <div class="member-info-header">
           <MemberAvatar 
             :name="selectedMember.name" 
-            :color="selectedMember.avatarColor" 
+            :color="selectedMember.color" 
             size="lg" 
           />
           <h2>{{ selectedMember.name }}</h2>
@@ -237,7 +223,7 @@ const formatDate = (timestamp: number) => {
       </div>
       
       <!-- Admin Section -->
-      <div v-if="selectedMember?.isAdmin" class="admin-section">
+      <div class="admin-section">
         <h2>{{ t('store.rewardManagement') }}</h2>
         
         <!-- Existing Rewards Management -->
@@ -313,29 +299,6 @@ const formatDate = (timestamp: number) => {
           
           <button type="submit" class="submit-button">{{ t('store.addReward') }}</button>
         </form>
-      </div>
-      
-      <!-- Redemption History -->
-      <div class="history-section">
-        <h2>{{ t('store.redemptionHistory') }}</h2>
-        
-        <div v-if="redemptionHistory.length === 0" class="empty-state">
-          <p>{{ t('store.noRedemptions') }}</p>
-        </div>
-        
-        <div v-else class="history-list">
-          <div v-for="(item, index) in redemptionHistory" :key="index" class="history-item">
-            <div class="history-icon">{{ item.reward.icon }}</div>
-            <div class="history-content">
-              <h4>{{ item.reward.title }}</h4>
-              <p class="history-date">{{ t('store.redeemedOn') }} {{ formatDate(item.date) }}</p>
-            </div>
-            <div class="history-points">
-              <span>{{ item.reward.points }}</span>
-              <small>{{ t('store.points') }}</small>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
     
@@ -533,14 +496,14 @@ const formatDate = (timestamp: number) => {
   color: var(--gray-700);
 }
 
-.rewards-section, .history-section {
+.rewards-section {
   background-color: var(--white);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
   box-shadow: var(--shadow-md);
 }
 
-.rewards-section h2, .history-section h2 {
+.rewards-section h2 {
   text-align: center;
   margin-bottom: var(--space-lg);
 }
@@ -549,64 +512,6 @@ const formatDate = (timestamp: number) => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--space-lg);
-}
-
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.history-item {
-  display: flex;
-  align-items: center;
-  padding: var(--space-md);
-  background-color: var(--gray-100);
-  border-radius: var(--radius-md);
-}
-
-.history-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  font-size: 24px;
-  background-color: var(--primary-light);
-  border-radius: var(--radius-md);
-  margin-right: var(--space-md);
-}
-
-.history-content {
-  flex: 1;
-}
-
-.history-content h4 {
-  margin: 0;
-  margin-bottom: var(--space-xs);
-}
-
-.history-date {
-  font-size: var(--font-size-sm);
-  color: var(--gray-600);
-  margin: 0;
-}
-
-.history-points {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.history-points span {
-  font-size: var(--font-size-lg);
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.history-points small {
-  font-size: var(--font-size-xs);
-  color: var(--gray-600);
 }
 
 .empty-state {

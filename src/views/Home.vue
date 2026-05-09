@@ -1,49 +1,29 @@
 <script setup lang="ts">
-import { inject, computed } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import type { MembersStore } from '../stores/members'
-import type { TasksStore } from '../stores/tasks'
+import { useMembers } from '../stores/members'
+import { useTasks } from '../stores/tasks'
 import type { Task } from '../stores/tasks'
 import TaskCard from '../components/task/TaskCard.vue'
 
 const { t } = useI18n()
 const router = useRouter()
-const membersStore = inject('membersStore') as MembersStore
-const tasksStore = inject('tasksStore') as TasksStore
+const membersStore = useMembers()
+const tasksStore = useTasks()
 
 const memberCount = computed(() => membersStore.members.value.length)
-const pendingTasksCount = computed(() => tasksStore.getPendingTasksCount())
-const completedTasksCount = computed(() => tasksStore.getCompletedTasksCount())
 
 // Get all members with their points
 const members = computed(() => membersStore.members.value)
 
-// Get today's tasks (tasks that are not completed and are due today)
+// Get today's tasks (tasks assigned to current member)
 const todaysTasks = computed(() => {
+  const currentMemberId = membersStore.currentMember.value?.id
+  if (!currentMemberId) return []
+  
   return tasksStore.tasks.value.filter(task => {
-    // Check if task is not complete
-    if (task.isComplete) return false
-    
-    // For daily tasks, always include
-    if (task.frequency === 'daily') return true
-    
-    // For weekly tasks, check if it's the right day of the week
-    if (task.frequency === 'weekly') {
-      const today = new Date().getDay() // 0 = Sunday, 1 = Monday, etc.
-      return task.weeklyDay === today
-    }
-    
-    // For one-time tasks, include if not completed and due today or in the past
-    if (task.frequency === 'once') {
-      if (!task.dueDate) return true
-      const dueDate = new Date(task.dueDate)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      return dueDate <= today
-    }
-    
-    return false
+    return task.assignedTo.includes(currentMemberId)
   })
 })
 
@@ -53,17 +33,22 @@ const tasksByMember = computed(() => {
     'everyone': []
   }
   
-  // Initialize with all members
   members.value.forEach(member => {
     result[member.id] = []
   })
   
-  // Group tasks
   todaysTasks.value.forEach(task => {
-    if (task.memberId === null || task.memberId === undefined) {
+    const isForEveryone = task.assignedTo.length === 0 || 
+      task.assignedTo.every(id => members.value.some(m => m.id === id))
+    
+    if (isForEveryone) {
       result['everyone'].push(task)
-    } else if (result[task.memberId]) {
-      result[task.memberId].push(task)
+    } else {
+      task.assignedTo.forEach(memberId => {
+        if (result[memberId]) {
+          result[memberId].push(task)
+        }
+      })
     }
   })
   
@@ -89,14 +74,14 @@ const getMember = (id: string) => {
 }
 
 // 获取当前用户信息
-const currentMember = computed(() => membersStore.currentMember)
+const currentMember = computed(() => membersStore.currentMember.value)
 </script>
 
 <template>
   <div class="home">
     <!-- Today's Tasks -->
     <section class="todays-tasks" v-if="hasTodaysTasks">
-      <h2 v-if="currentMember">{{ currentMember.name }}的{{ t('home.personalCenter') }}</h2>
+      <h2 v-if="currentMember">{{ currentMember?.name }}的{{ t('home.personalCenter') }}</h2>
       
       <!-- Tasks for everyone -->
       <div v-if="tasksByMember['everyone'].length > 0" class="tasks-section">
@@ -133,7 +118,7 @@ const currentMember = computed(() => membersStore.currentMember)
       <h2>{{ t('home.familyPoints') }}</h2>
       <div class="grid grid-auto-fit">
         <div v-for="member in members" :key="member.id" class="card member-card">
-          <div class="member-avatar" :style="{ backgroundColor: member.avatarColor }">
+          <div class="member-avatar" :style="{ backgroundColor: member.color }">
             {{ member.name.charAt(0).toUpperCase() }}
           </div>
           <h3>{{ member.name }}</h3>
@@ -149,10 +134,10 @@ const currentMember = computed(() => membersStore.currentMember)
     <section class="hero">
       <div class="hero-content">
         <div v-if="currentMember" class="current-user-welcome">
-          <div class="current-user-avatar" :style="{ backgroundColor: currentMember.avatarColor }">
-            {{ currentMember.name.charAt(0).toUpperCase() }}
+          <div class="current-user-avatar" :style="{ backgroundColor: currentMember?.color }">
+            {{ currentMember?.name?.charAt(0).toUpperCase() }}
           </div>
-          <h1>{{ t('home.welcomeBack') }}, {{ currentMember.name }}!</h1>
+          <h1>{{ t('home.welcomeBack') }}, {{ currentMember?.name }}!</h1>
         </div>
         <h1 v-else>{{ t('home.welcomeTo') }}</h1>
         <p class="hero-subtitle">{{ t('home.subtitle') }}</p>
@@ -176,14 +161,14 @@ const currentMember = computed(() => membersStore.currentMember)
         
         <div class="card dashboard-card">
           <div class="dashboard-icon">📝</div>
-          <h3>{{ pendingTasksCount }}</h3>
+          <h3>{{ tasksStore.tasks.value.length }}</h3>
           <p>{{ t('home.pendingTasks') }}</p>
           <button class="btn btn-primary" @click="router.push('/tasks')">{{ t('home.view') }}</button>
         </div>
         
         <div class="card dashboard-card">
           <div class="dashboard-icon">✅</div>
-          <h3>{{ completedTasksCount }}</h3>
+          <h3>{{ members.reduce((sum, m) => sum + m.completedTasks.length, 0) }}</h3>
           <p>{{ t('home.completedTasks') }}</p>
           <button class="btn btn-primary" @click="router.push('/tasks')">{{ t('home.details') }}</button>
         </div>

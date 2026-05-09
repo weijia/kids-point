@@ -20,7 +20,7 @@ const selectMember = () => {
 <template>
   <div class="member-card" @click="selectMember">
     <div class="member-header">
-      <MemberAvatar :name="member.name" :color="member.avatarColor" size="lg" />
+      <MemberAvatar :name="member.name" :color="member.color" size="lg" />
       <h3>{{ member.name }}</h3>
     </div>
     <div class="member-points">

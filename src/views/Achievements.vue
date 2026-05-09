@@ -1,61 +1,44 @@
 <script setup lang="ts">
-import { ref, unref, inject, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AchievementsStore } from '../stores/achievements'
-import type { MembersStore } from '../stores/members'
+import { useAchievements } from '../stores/achievements'
+import { useMembers } from '../stores/members'
 import AchievementBadge from '../components/achievement/AchievementBadge.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
 const { t } = useI18n()
-const achievementsStore = inject('achievementsStore') as AchievementsStore
-const membersStore = inject('membersStore') as MembersStore
+const achievementsStore = useAchievements()
+const membersStore = useMembers()
 
-// Selected member for achievements
 const selectedMemberId = ref('')
 
-// Get all members
 const members = computed(() => {
-  return membersStore.members
+  return membersStore.members.value
 })
 
-// Get the selected member
 const selectedMember = computed(() => {
-  const membersList = unref(members).value
-  if (!selectedMemberId.value && membersList && membersList.length > 0) {
-    selectedMemberId.value = membersList[0]?.id || ''
+  if (!selectedMemberId.value && members.value.length > 0) {
+    selectedMemberId.value = members.value[0]?.id || ''
   }
-  return membersStore.getMemberById(selectedMemberId.value)
+  return members.value.find(m => m.id === selectedMemberId.value)
 })
 
-// Get all achievements
 const allAchievements = computed(() => {
-  return achievementsStore.achievements
+  return achievementsStore.achievements.value
 })
 
-// Get earned achievements for selected member
 const earnedAchievements = computed(() => {
   if (!selectedMember.value) return []
-  return achievementsStore.getMemberAchievements(selectedMember.value.id)
+  return selectedMember.value.completedTasks
 })
 
-// Check which achievements are earned
 const isAchievementEarned = (achievementId: string): boolean => {
   if (!selectedMember.value) return false
-  
-  return unref(earnedAchievements).some(
-    (item: { achievement: { id: string }; date: number }) => item.achievement.id === achievementId
-  )
+  return selectedMember.value.completedTasks.includes(achievementId)
 }
 
-// Get achievement earn date
-const getAchievementEarnDate = (achievementId: string): number | null => {
-  if (!selectedMember.value) return null
-  
-  const earned = unref(earnedAchievements).find(
-    (item: { achievement: { id: string }; date: number }) => item.achievement.id === achievementId
-  )
-  
-  return earned ? earned.date : null
+const getAchievementEarnDate = (_achievementId: string): number | null => {
+  return null
 }
 </script>
 
@@ -67,16 +50,16 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
     </div>
     
     <!-- Member Selector -->
-    <div v-if="unref(members).length > 0" class="member-selector">
+    <div v-if="members.length > 0" class="member-selector">
       <label for="member-select">{{ t('achievements.viewFor') }}:</label>
       <select id="member-select" v-model="selectedMemberId">
-        <option v-for="member in unref(members)" :key="member.id" :value="member.id">
+        <option v-for="member in members" :key="member.id" :value="member.id">
           {{ member.name }}
         </option>
       </select>
     </div>
     
-    <div v-if="unref(members).length === 0" class="empty-state">
+    <div v-if="members.length === 0" class="empty-state">
       <p>{{ t('achievements.noMembers') }}</p>
     </div>
     
@@ -90,19 +73,23 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
         <div class="member-info-header">
           <MemberAvatar 
             :name="selectedMember.name" 
-            :color="selectedMember.avatarColor" 
+            :color="selectedMember.color" 
             size="lg" 
           />
           <h2>{{ selectedMember.name }}'s {{ t('achievements.achievements') }}</h2>
         </div>
         
         <div class="achievement-stats">
+          <div class="stat stat-progress">
+            <span class="stat-value">{{ allAchievements.length > 0 ? Math.round(earnedAchievements.length / allAchievements.length * 100) : 0 }}%</span>
+            <span class="stat-label">{{ t('achievements.progress') }}</span>
+          </div>
           <div class="stat">
-            <span class="stat-value">{{ unref(earnedAchievements).length }}</span>
+            <span class="stat-value">{{ earnedAchievements.length }}</span>
             <span class="stat-label">{{ t('achievements.earned') }}</span>
           </div>
           <div class="stat">
-            <span class="stat-value">{{ unref(allAchievements).length - unref(earnedAchievements).length }}</span>
+            <span class="stat-value">{{ allAchievements.length - earnedAchievements.length }}</span>
             <span class="stat-label">{{ t('achievements.remaining') }}</span>
           </div>
         </div>
@@ -112,13 +99,13 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
       <div class="achievements-section">
         <h2>{{ t('achievements.achievementBadges') }}</h2>
         
-        <div v-if="unref(allAchievements).length === 0" class="empty-state">
+        <div v-if="allAchievements.length === 0" class="empty-state">
           <p>{{ t('achievements.noAchievements') }}</p>
         </div>
         
         <div v-else class="achievements-grid">
           <AchievementBadge 
-            v-for="achievement in unref(allAchievements)" 
+            v-for="achievement in allAchievements" 
             :key="achievement.id" 
             :achievement="achievement"
             :earned="isAchievementEarned(achievement.id)"

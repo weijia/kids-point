@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { Reward } from '../../stores/rewards'
-import type { MembersStore } from '../../stores/members'
-import type { RewardsStore } from '../../stores/rewards'
+import { useMembers } from '../../stores/members'
 
 const props = defineProps<{
   reward: Reward;
@@ -13,14 +12,13 @@ const emit = defineEmits<{
   (e: 'redeemed', reward: Reward): void;
 }>()
 
-const membersStore = inject('membersStore') as MembersStore
-const rewardsStore = inject('rewardsStore') as RewardsStore
+const membersStore = useMembers()
 
 const isRedeeming = ref(false)
 const redeemError = ref('')
 
 const member = computed(() => {
-  return membersStore.getMemberById(props.memberId)
+  return membersStore.members.value.find(m => m.id === props.memberId)
 })
 
 const canAfford = computed(() => {
@@ -45,20 +43,9 @@ const redeemReward = () => {
   isRedeeming.value = true
   
   try {
-    // Redeem the reward
-    const success = rewardsStore.redeemReward(props.reward.id, props.memberId)
-    
-    if (success) {
-      // Deduct points from the member
-      membersStore.removePoints(
-        props.memberId,
-        props.reward.points,
-        `Redeemed reward: ${props.reward.title}`,
-        props.reward.id
-      )
-      
-      emit('redeemed', props.reward)
-    }
+    membersStore.deductPoints(props.memberId, props.reward.points)
+    membersStore.redeemReward(props.memberId, props.reward.id)
+    emit('redeemed', props.reward)
   } catch (error) {
     console.error('Failed to redeem reward:', error)
     redeemError.value = 'Failed to redeem reward!'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { onMounted, onUnmounted, provide, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Navbar from './components/layout/Navbar.vue'
@@ -9,10 +9,10 @@ import { useTasks } from './stores/tasks'
 import { useRewards } from './stores/rewards'
 import { useAchievements } from './stores/achievements'
 import { useSettings } from './stores/settings'
-import { databaseService } from './services/database'
+import { databaseService, type SyncStatus } from './services/database'
 
 const router = useRouter()
-const { locale } = useI18n()
+const { t, locale } = useI18n()
 
 const membersStore = useMembers()
 const tasksStore = useTasks()
@@ -20,7 +20,7 @@ const rewardsStore = useRewards()
 const achievementsStore = useAchievements()
 const settingsStore = useSettings()
 
-const isSyncing = ref(false)
+const syncStatus = ref<SyncStatus>('idle')
 const syncError = ref<string | null>(null)
 
 provide('membersStore', membersStore)
@@ -29,9 +29,22 @@ provide('rewardsStore', rewardsStore)
 provide('achievementsStore', achievementsStore)
 provide('settingsStore', settingsStore)
 
-watch(() => settingsStore.settings.locale, (newLocale) => {
-  locale.value = newLocale
-}, { immediate: true })
+const isWebDAVEnabled = computed(() => {
+  return settingsStore.settings.webdavSync?.enabled === true
+})
+
+const showSyncStatus = computed(() => {
+  return isWebDAVEnabled.value && syncStatus.value !== 'idle'
+})
+
+const syncStatusText = computed(() => {
+  switch (syncStatus.value) {
+    case 'syncing': return t('webdav.syncing')
+    case 'synced': return t('webdav.synced')
+    case 'error': return t('webdav.error')
+    default: return ''
+  }
+})
 
 router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !settingsStore.isAuthenticated) {
@@ -70,14 +83,11 @@ const initializeDatabase = async () => {
       })
       
       databaseService.onStatusChange((status) => {
-        if (status === 'syncing') {
-          isSyncing.value = true
+        syncStatus.value = status
+        if (status === 'error') {
+          syncError.value = t('webdav.syncFailed')
+        } else {
           syncError.value = null
-        } else if (status === 'synced') {
-          isSyncing.value = false
-        } else if (status === 'error') {
-          isSyncing.value = false
-          syncError.value = 'Sync failed. Please try again.'
         }
       })
     }
@@ -88,21 +98,21 @@ const initializeDatabase = async () => {
 
 const performAutoLoad = async () => {
   const webdavConfig = settingsStore.settings.webdavSync
-  if (webdavConfig && webdavConfig.enabled && !isSyncing.value) {
+  if (webdavConfig && webdavConfig.enabled) {
     try {
-      isSyncing.value = true
+      syncStatus.value = 'syncing'
       await databaseService.loadFromWebDAV()
+      syncStatus.value = 'synced'
       syncError.value = null
     } catch (error) {
       console.error('Auto-load failed:', error)
-    } finally {
-      isSyncing.value = false
+      syncStatus.value = 'error'
+      syncError.value = t('webdav.loadFailed')
     }
   }
 }
 
 onMounted(async () => {
-  settingsStore.loadSettings()
   locale.value = settingsStore.settings.locale
   
   membersStore.loadMembers()
@@ -142,9 +152,11 @@ onUnmounted(() => {
   <div class="app-container">
     <Navbar />
     <main class="main-content">
-      <div v-if="isSyncing" class="sync-indicator">
-        <span class="sync-spinner"></span>
-        <span>Syncing...</span>
+      <div v-if="showSyncStatus" class="sync-indicator" :class="'sync-' + syncStatus">
+        <span v-if="syncStatus === 'syncing'" class="sync-spinner"></span>
+        <span v-if="syncStatus === 'synced'" class="sync-icon">✓</span>
+        <span v-if="syncStatus === 'error'" class="sync-icon">✗</span>
+        <span>{{ syncStatusText }}</span>
       </div>
       <div v-if="syncError" class="sync-error">
         {{ syncError }}
@@ -188,8 +200,6 @@ onUnmounted(() => {
   position: fixed;
   top: 70px;
   right: 20px;
-  background-color: var(--primary, #4CAF50);
-  color: white;
   padding: 8px 16px;
   border-radius: 20px;
   display: flex;
@@ -198,6 +208,27 @@ onUnmounted(() => {
   font-size: 14px;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: slideIn 0.3s ease;
+}
+
+.sync-syncing {
+  background-color: var(--primary, #4CAF50);
+  color: white;
+}
+
+.sync-synced {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.sync-error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.sync-indicator.sync-error {
+  background-color: #f8d7da;
+  color: #721c24;
 }
 
 .sync-spinner {
@@ -209,16 +240,40 @@ onUnmounted(() => {
   animation: spin 1s linear infinite;
 }
 
+.sync-icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.sync-synced .sync-icon {
+  color: #155724;
+}
+
+.sync-error .sync-icon {
+  color: #721c24;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.sync-error {
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.sync-error-msg {
   position: fixed;
   top: 70px;
   right: 20px;
-  background-color: #f44336;
-  color: white;
+  background-color: #f8d7da;
+  color: #721c24;
   padding: 8px 16px;
   border-radius: 20px;
   font-size: 14px;

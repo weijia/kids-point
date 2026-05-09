@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, inject } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import type { SettingsStore } from '../stores/settings'
+import { useSettings } from '../stores/settings'
 
 const { t } = useI18n()
-const settingsStore = inject('settingsStore') as SettingsStore
+const settingsStore = useSettings()
 const router = useRouter()
 
 const password = ref('')

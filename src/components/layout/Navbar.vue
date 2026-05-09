@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettings } from '../../stores/settings'
-import { type MembersStore } from '../../stores/members'
+import { useMembers } from '../../stores/members'
 import { supportedLocales, type SupportedLocale } from '../../i18n'
 
 const router = useRouter()
 const route = useRoute()
 const { locale } = useI18n()
 const settingsStore = useSettings()
-const membersStore = inject('membersStore') as MembersStore
+const membersStore = useMembers()
 
 const isMenuOpen = ref(false)
 
 const members = computed(() => membersStore.members.value)
-const currentMember = computed(() => membersStore.currentMember)
+const currentMember = computed(() => membersStore.currentMember.value)
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value

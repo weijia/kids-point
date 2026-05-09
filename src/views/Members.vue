@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { MembersStore, Member } from '../stores/members'
+import { useMembers } from '../stores/members'
+import type { Member } from '../stores/members'
 import MemberCard from '../components/member/MemberCard.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
 const { t } = useI18n()
-const membersStore = inject('membersStore') as MembersStore
+const membersStore = useMembers()
 
 // New member form data
 const newMember = ref({
   name: '',
-  avatarColor: '#3B82F6' // Default color
+  color: '#3B82F6' // Default color
 })
 
 // Member being edited
@@ -40,13 +41,13 @@ const addMember = () => {
   
   membersStore.addMember(
     newMember.value.name.trim(),
-    newMember.value.avatarColor
+    newMember.value.color
   )
   
   // Reset form
   newMember.value = {
     name: '',
-    avatarColor: '#3B82F6'
+    color: '#3B82F6'
   }
 }
 
@@ -61,7 +62,7 @@ const updateMember = () => {
   
   membersStore.updateMember(editingMember.value.id, {
     name: editingMember.value.name,
-    avatarColor: editingMember.value.avatarColor
+    color: editingMember.value.color
   })
   
   // Close edit form
@@ -109,8 +110,8 @@ const deleteMember = () => {
             :key="color" 
             class="color-option"
             :style="{ backgroundColor: color }"
-            :class="{ 'selected': newMember.avatarColor === color }"
-            @click="newMember.avatarColor = color"
+            :class="{ 'selected': newMember.color === color }"
+            @click="newMember.color = color"
           ></div>
         </div>
       </div>
@@ -120,7 +121,7 @@ const deleteMember = () => {
         <div class="avatar-preview">
           <MemberAvatar 
             :name="newMember.name || t('members.preview')" 
-            :color="newMember.avatarColor" 
+            :color="newMember.color" 
             size="md" 
           />
           <span>{{ newMember.name || t('members.preview') }}</span>
@@ -171,8 +172,8 @@ const deleteMember = () => {
               :key="color" 
               class="color-option"
               :style="{ backgroundColor: color }"
-              :class="{ 'selected': editingMember.avatarColor === color }"
-              @click="editingMember.avatarColor = color"
+              :class="{ 'selected': editingMember.color === color }"
+              @click="editingMember.color = color"
             ></div>
           </div>
         </div>

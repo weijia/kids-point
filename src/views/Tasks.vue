@@ -1,26 +1,24 @@
 <script setup lang="ts">
-import { ref, inject, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { TasksStore, Task } from '../stores/tasks'
-import type { MembersStore } from '../stores/members'
+import { useTasks } from '../stores/tasks'
+import type { Task } from '../stores/tasks'
+import { useMembers } from '../stores/members'
 import TaskCard from '../components/task/TaskCard.vue'
 
 const { t } = useI18n()
-const tasksStore = inject('tasksStore') as TasksStore
-const membersStore = inject('membersStore') as MembersStore
+const tasksStore = useTasks()
+const membersStore = useMembers()
 
 // Load tasks when component is mounted
 onMounted(() => {
-  console.log('Tasks component mounted, loading tasks...')
   tasksStore.loadTasks()
-  console.log('Tasks loaded:', tasksStore.tasks.value)
-  console.log('Tasks count:', tasksStore.tasks.value.length)
 })
 
-// Reset all tasks to default examples
+// Reset daily tasks to default examples
 const resetTasks = () => {
-  if (confirm('Are you sure you want to reset all tasks to default examples? This will delete all existing tasks.')) {
-    tasksStore.resetAllTasks()
+  if (confirm('Are you sure you want to reset daily tasks to default examples?')) {
+    tasksStore.resetDailyTasks()
   }
 }
 
@@ -30,7 +28,7 @@ const newTask = ref({
   description: '',
   icon: '📝',
   points: 10,
-  memberId: null as string | null,
+  assignedTo: [] as string[],
   frequency: 'daily' as 'daily' | 'weekly' | 'once'
 })
 
@@ -44,8 +42,6 @@ const iconOptions = [
 
 // Get all tasks
 const tasks = computed(() => {
-  console.log('Raw tasks from store:', tasksStore.tasks)
-  // Make sure we're returning the actual array, not the Ref object
   return tasksStore.tasks.value || []
 })
 
@@ -59,30 +55,16 @@ const filterType = ref('all')
 const filterMember = ref('all')
 
 const filteredTasks = computed(() => {
-  // Get the tasks array from the computed property
   const tasksList = tasks.value
-  console.log('Total tasks before filtering:', tasksList.length)
-  console.log('Current filter type:', filterType.value)
-  console.log('Current filter member:', filterMember.value)
-  
   let result = [...tasksList]
-  
-  // Filter by type
-  if (filterType.value === 'completed') {
-    result = result.filter(task => task.isComplete)
-  } else if (filterType.value === 'pending') {
-    result = result.filter(task => !task.isComplete)
-  }
   
   // Filter by member
   if (filterMember.value !== 'all') {
     result = result.filter(task => 
-      task.memberId === filterMember.value || 
-      (task.memberId === null && filterMember.value === 'unassigned')
+      task.assignedTo.includes(filterMember.value)
     )
   }
   
-  console.log('Filtered tasks count:', result.length)
   return result
 })
 
@@ -95,17 +77,16 @@ const addTask = () => {
     description: newTask.value.description.trim(),
     icon: newTask.value.icon,
     points: newTask.value.points,
-    memberId: newTask.value.memberId,
+    assignedTo: newTask.value.assignedTo,
     frequency: newTask.value.frequency
   })
   
-  // Reset form
   newTask.value = {
     title: '',
     description: '',
     icon: '📝',
     points: 10,
-    memberId: null,
+    assignedTo: [],
     frequency: 'daily'
   }
 }
@@ -124,11 +105,10 @@ const updateTask = () => {
     description: editingTask.value.description,
     icon: editingTask.value.icon,
     points: editingTask.value.points,
-    memberId: editingTask.value.memberId,
+    assignedTo: editingTask.value.assignedTo,
     frequency: editingTask.value.frequency
   })
   
-  // Close edit form
   editingTask.value = null
 }
 
@@ -191,8 +171,7 @@ const deleteTask = () => {
       <div class="form-row">
         <div class="input-group">
           <label for="task-member">{{ t('tasks.assignTo') }}</label>
-          <select id="task-member" v-model="newTask.memberId">
-            <option :value="null">{{ t('tasks.everyone') }}</option>
+          <select id="task-member" v-model="newTask.assignedTo" multiple>
             <option v-for="member in members" :key="member.id" :value="member.id">
               {{ member.name }}
             </option>
@@ -314,8 +293,7 @@ const deleteTask = () => {
         <div class="form-row">
           <div class="input-group">
             <label for="edit-member">{{ t('tasks.assignTo') }}</label>
-            <select id="edit-member" v-model="editingTask.memberId">
-              <option :value="null">{{ t('tasks.everyone') }}</option>
+            <select id="edit-member" v-model="editingTask.assignedTo" multiple>
               <option v-for="member in members" :key="member.id" :value="member.id">
                 {{ member.name }}
               </option>
