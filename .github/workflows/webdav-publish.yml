@@ -26,7 +26,7 @@ jobs:
       - name: Build project
         run: npm run build
         env:
-          VITE_BASE_URL: '/${{ github.event.repository.name }}/'
+          VITE_BASE_URL: '/online/${{ github.event.repository.name }}/'
           
       - name: Upload to WebDAV
         env:
@@ -35,11 +35,14 @@ jobs:
           WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
         run: |
           curl -v -u "$WEBDAV_USERNAME:$WEBDAV_PASSWORD" \
-            -X MKCOL "$WEBDAV_URL/${{ github.event.repository.name }}/" 2>/dev/null || true
+            -X MKCOL "$WEBDAV_URL/online/" 2>/dev/null || true
+          
+          curl -v -u "$WEBDAV_USERNAME:$WEBDAV_PASSWORD" \
+            -X MKCOL "$WEBDAV_URL/online/${{ github.event.repository.name }}/" 2>/dev/null || true
           
           for file in $(find dist -type f); do
             relative_path="${file#dist/}"
-            remote_path="$WEBDAV_URL/${{ github.event.repository.name }}/$relative_path"
+            remote_path="$WEBDAV_URL/online/${{ github.event.repository.name }}/$relative_path"
             
             echo "Uploading: $file -> $remote_path"
             
@@ -56,4 +59,4 @@ jobs:
           echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "Repository: ${{ github.event.repository.name }}" >> $GITHUB_STEP_SUMMARY
           echo "Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "Deployed to: ${{ secrets.WEBDAV_URL }}/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
+          echo "Deployed to: ${{ secrets.WEBDAV_URL }}/online/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
