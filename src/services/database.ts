@@ -1,6 +1,5 @@
 import PouchDB from 'pouchdb';
 import { sync } from 'universal-sync-v2';
-import { configure, fs } from '@zenfs/core';
 import { createWebDAVFileSystem } from 'zen-fs-webdav';
 
 export interface WebDAVConfig {
@@ -10,13 +9,9 @@ export interface WebDAVConfig {
   syncPath?: string;
 }
 
-export interface DatabaseConfig {
-  name: string;
-  webdav?: WebDAVConfig;
-}
-
 class DatabaseService {
   private db: PouchDB.Database | null = null;
+  private webdavFS: ReturnType<typeof createWebDAVFileSystem> | null = null;
   private webdavConfig: WebDAVConfig | null = null;
   private syncInProgress = false;
   private onSyncStatusChange?: (status: SyncStatus) => void;
@@ -34,16 +29,10 @@ class DatabaseService {
     this.webdavConfig = config;
     
     try {
-      const webdavFS = createWebDAVFileSystem({
+      this.webdavFS = createWebDAVFileSystem({
         baseUrl: config.url,
         username: config.username,
         password: config.password,
-      });
-      
-      await configure({
-        mounts: {
-          '/webdav-storage': webdavFS as any,
-        }
       });
     } catch (error) {
       console.error('Failed to configure WebDAV:', error);
@@ -56,11 +45,11 @@ class DatabaseService {
   }
 
   public isWebDAVConfigured(): boolean {
-    return this.webdavConfig !== null;
+    return this.webdavFS !== null;
   }
 
   public async syncToWebDAV(): Promise<void> {
-    if (!this.db || !this.webdavConfig) {
+    if (!this.db || !this.webdavFS || !this.webdavConfig) {
       throw new Error('Database or WebDAV not configured');
     }
 
@@ -73,8 +62,8 @@ class DatabaseService {
     this.onSyncStatusChange?.('syncing');
 
     try {
-      const syncPath = this.webdavConfig.syncPath || '/webdav-storage/kidspoints-data';
-      await sync(this.db, fs.promises as any, syncPath);
+      const syncPath = this.webdavConfig.syncPath || '/kidspoints-data';
+      await sync(this.db, this.webdavFS as any, syncPath);
       this.onSyncStatusChange?.('synced');
       console.log('Sync to WebDAV completed successfully');
     } catch (error) {
@@ -87,7 +76,7 @@ class DatabaseService {
   }
 
   public async loadFromWebDAV(): Promise<void> {
-    if (!this.db || !this.webdavConfig) {
+    if (!this.db || !this.webdavFS || !this.webdavConfig) {
       throw new Error('Database or WebDAV not configured');
     }
 
@@ -95,8 +84,8 @@ class DatabaseService {
     this.onSyncStatusChange?.('syncing');
 
     try {
-      const syncPath = this.webdavConfig.syncPath || '/webdav-storage/kidspoints-data';
-      await sync(this.db, fs.promises as any, syncPath);
+      const syncPath = this.webdavConfig.syncPath || '/kidspoints-data';
+      await sync(this.db, this.webdavFS as any, syncPath);
       this.onSyncStatusChange?.('synced');
       console.log('Load from WebDAV completed successfully');
     } catch (error) {
