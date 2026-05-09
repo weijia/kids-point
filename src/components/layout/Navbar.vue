@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSettings } from '../../stores/settings'
 import { type MembersStore } from '../../stores/members'
+import { supportedLocales, type SupportedLocale } from '../../i18n'
 
 const router = useRouter()
 const route = useRoute()
+const { locale } = useI18n()
 const settingsStore = useSettings()
 const membersStore = inject('membersStore') as MembersStore
 
 const isMenuOpen = ref(false)
 
-// Get members from store
 const members = computed(() => membersStore.members.value)
 const currentMember = computed(() => membersStore.currentMember)
 
@@ -31,21 +33,26 @@ const isAuthenticated = computed(() => {
   return settingsStore.isAuthenticated
 })
 
-// Handle member selection change
 const handleMemberChange = (event: Event) => {
   const select = event.target as HTMLSelectElement
   const memberId = select.value
   
   if (memberId) {
     membersStore.setCurrentMember(memberId)
-    // Redirect to home page to show the member's dashboard
     if (route.path !== '/') {
       router.push('/')
     }
   }
 }
 
-// 注意：这些变量已在上方定义，不需要重复声明
+const changeLanguage = (lang: SupportedLocale) => {
+  locale.value = lang
+  settingsStore.setLocale(lang)
+}
+
+const currentLanguage = computed(() => {
+  return supportedLocales.find(l => l.code === locale.value) || supportedLocales[0]
+})
 </script>
 
 <template>
@@ -64,35 +71,41 @@ const handleMemberChange = (event: Event) => {
       <nav class="navbar-menu" :class="{ 'is-open': isMenuOpen }">
         <div class="member-selector" v-if="members.length > 0">
           <select :value="currentMember?.id || ''" @change="handleMemberChange">
-            <option value="" disabled>选择成员</option>
+            <option value="" disabled>{{ $t('nav.selectMember') }}</option>
             <option v-for="member in members" :key="member.id" :value="member.id">
               {{ member.name }}
             </option>
           </select>
         </div>
+
+        <div class="language-selector">
+          <button class="lang-btn" @click="changeLanguage(currentLanguage.code === 'en' ? 'zh' : 'en')">
+            {{ currentLanguage.flag }} {{ currentLanguage.code.toUpperCase() }}
+          </button>
+        </div>
         
         <ul class="navbar-nav">
           <li class="nav-item" :class="{ 'active': isActive('Home') }">
-            <router-link to="/" @click="closeMenu">🏠 Home</router-link>
+            <router-link to="/" @click="closeMenu">🏠 {{ $t('nav.home') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('Members') }">
-            <router-link to="/members" @click="closeMenu">👨‍👩‍👧‍👦 Members</router-link>
+            <router-link to="/members" @click="closeMenu">👨‍👩‍👧‍👦 {{ $t('nav.members') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('Tasks') }">
-            <router-link to="/tasks" @click="closeMenu">📝 Tasks</router-link>
+            <router-link to="/tasks" @click="closeMenu">📝 {{ $t('nav.tasks') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('Leaderboard') }">
-            <router-link to="/leaderboard" @click="closeMenu">🏅 Leaderboard</router-link>
+            <router-link to="/leaderboard" @click="closeMenu">🏅 {{ $t('nav.leaderboard') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('Store') }">
-            <router-link to="/store" @click="closeMenu">🛍️ Store</router-link>
+            <router-link to="/store" @click="closeMenu">🛍️ {{ $t('nav.store') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('Achievements') }">
-            <router-link to="/achievements" @click="closeMenu">🎖️ Achievements</router-link>
+            <router-link to="/achievements" @click="closeMenu">🎖️ {{ $t('nav.achievements') }}</router-link>
           </li>
           <li class="nav-item" :class="{ 'active': isActive('AdminLogin') || isActive('AdminPanel') }">
             <router-link :to="isAuthenticated ? '/admin' : '/admin-login'" @click="closeMenu">
-              🔒 {{ isAuthenticated ? 'Admin' : 'Parent Login' }}
+              🔒 {{ isAuthenticated ? $t('nav.admin') : $t('nav.parentLogin') }}
             </router-link>
           </li>
         </ul>
@@ -173,6 +186,26 @@ const handleMemberChange = (event: Event) => {
   box-shadow: 0 0 0 2px var(--primary-light);
 }
 
+.language-selector {
+  margin-right: var(--space-md);
+}
+
+.lang-btn {
+  padding: var(--space-xs) var(--space-sm);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-md);
+  background-color: var(--white);
+  font-weight: 600;
+  color: var(--gray-800);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lang-btn:hover {
+  border-color: var(--primary-dark);
+  background-color: var(--primary-light);
+}
+
 .navbar-nav {
   display: flex;
   list-style: none;
@@ -242,6 +275,14 @@ const handleMemberChange = (event: Event) => {
   
   .member-selector select {
     width: 100%;
+  }
+
+  .language-selector {
+    margin: 0 0 var(--space-md);
+  }
+
+  .lang-btn {
+    width: 80%;
   }
   
   .navbar-nav {

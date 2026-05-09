@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import type { SupportedLocale } from '../i18n'
 
 export interface WebDAVSyncConfig {
   url: string
@@ -16,6 +17,7 @@ export interface Settings {
   notificationsEnabled: boolean
   theme: 'light' | 'dark'
   webdavSync: WebDAVSyncConfig | null
+  locale: SupportedLocale
 }
 
 export interface SettingsStore {
@@ -30,6 +32,19 @@ export interface SettingsStore {
   saveSettings: () => void
   configureWebDAV: (config: WebDAVSyncConfig) => void
   disableWebDAV: () => void
+  setLocale: (locale: SupportedLocale) => void
+}
+
+function getDefaultLocale(): SupportedLocale {
+  const savedLocale = localStorage.getItem('kidpoints-locale')
+  if (savedLocale && (savedLocale === 'en' || savedLocale === 'zh')) {
+    return savedLocale
+  }
+  const browserLang = navigator.language.toLowerCase()
+  if (browserLang.startsWith('zh')) {
+    return 'zh'
+  }
+  return 'en'
 }
 
 export function useSettings(): SettingsStore {
@@ -40,7 +55,8 @@ export function useSettings(): SettingsStore {
     lastWeeklyReset: Date.now(),
     notificationsEnabled: true,
     theme: 'light',
-    webdavSync: null
+    webdavSync: null,
+    locale: getDefaultLocale()
   }
   
   const settings = ref<Settings>({ ...defaultSettings })
@@ -48,7 +64,12 @@ export function useSettings(): SettingsStore {
   const loadSettings = () => {
     const savedSettings = localStorage.getItem('kidpoints-settings')
     if (savedSettings) {
-      settings.value = JSON.parse(savedSettings)
+      const parsed = JSON.parse(savedSettings)
+      settings.value = { 
+        ...defaultSettings, 
+        ...parsed,
+        locale: parsed.locale || getDefaultLocale()
+      }
     }
   }
 
@@ -88,10 +109,12 @@ export function useSettings(): SettingsStore {
     
     const currentPassword = settings.value.adminPassword
     const webdavSync = settings.value.webdavSync
+    const locale = settings.value.locale
     settings.value = { 
       ...defaultSettings,
       adminPassword: currentPassword,
-      webdavSync
+      webdavSync,
+      locale
     }
     saveSettings()
   }
@@ -108,6 +131,12 @@ export function useSettings(): SettingsStore {
     }
   }
 
+  const setLocale = (locale: SupportedLocale) => {
+    settings.value.locale = locale
+    localStorage.setItem('kidpoints-locale', locale)
+    saveSettings()
+  }
+
   return {
     settings: settings.value,
     get isAuthenticated() { 
@@ -121,6 +150,7 @@ export function useSettings(): SettingsStore {
     loadSettings,
     saveSettings,
     configureWebDAV,
-    disableWebDAV
+    disableWebDAV,
+    setLocale
   }
 }

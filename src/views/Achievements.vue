@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, unref, inject, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AchievementsStore } from '../stores/achievements'
 import type { MembersStore } from '../stores/members'
 import AchievementBadge from '../components/achievement/AchievementBadge.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
+const { t } = useI18n()
 const achievementsStore = inject('achievementsStore') as AchievementsStore
 const membersStore = inject('membersStore') as MembersStore
 
@@ -60,13 +62,13 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
 <template>
   <div class="achievements-page">
     <div class="page-header">
-      <h1>Achievements</h1>
-      <p>Collect badges for special accomplishments and milestones!</p>
+      <h1>{{ t('achievements.title') }}</h1>
+      <p>{{ t('achievements.description') }}</p>
     </div>
     
     <!-- Member Selector -->
     <div v-if="unref(members).length > 0" class="member-selector">
-      <label for="member-select">View achievements for:</label>
+      <label for="member-select">{{ t('achievements.viewFor') }}:</label>
       <select id="member-select" v-model="selectedMemberId">
         <option v-for="member in unref(members)" :key="member.id" :value="member.id">
           {{ member.name }}
@@ -75,11 +77,11 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
     </div>
     
     <div v-if="unref(members).length === 0" class="empty-state">
-      <p>No family members added yet. Add members to track achievements!</p>
+      <p>{{ t('achievements.noMembers') }}</p>
     </div>
     
     <div v-else-if="!selectedMember" class="empty-state">
-      <p>Please select a family member to view achievements.</p>
+      <p>{{ t('achievements.selectMember') }}</p>
     </div>
     
     <div v-else class="achievements-content">
@@ -91,27 +93,27 @@ const getAchievementEarnDate = (achievementId: string): number | null => {
             :color="selectedMember.avatarColor" 
             size="lg" 
           />
-          <h2>{{ selectedMember.name }}'s Achievements</h2>
+          <h2>{{ selectedMember.name }}'s {{ t('achievements.achievements') }}</h2>
         </div>
         
         <div class="achievement-stats">
           <div class="stat">
             <span class="stat-value">{{ unref(earnedAchievements).length }}</span>
-            <span class="stat-label">Earned</span>
+            <span class="stat-label">{{ t('achievements.earned') }}</span>
           </div>
           <div class="stat">
             <span class="stat-value">{{ unref(allAchievements).length - unref(earnedAchievements).length }}</span>
-            <span class="stat-label">Remaining</span>
+            <span class="stat-label">{{ t('achievements.remaining') }}</span>
           </div>
         </div>
       </div>
       
       <!-- Achievements Section -->
       <div class="achievements-section">
-        <h2>Achievement Badges</h2>
+        <h2>{{ t('achievements.achievementBadges') }}</h2>
         
         <div v-if="unref(allAchievements).length === 0" class="empty-state">
-          <p>No achievements available yet. Check back soon!</p>
+          <p>{{ t('achievements.noAchievements') }}</p>
         </div>
         
         <div v-else class="achievements-grid">

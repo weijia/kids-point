@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, inject } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import type { SettingsStore } from '../stores/settings'
 
+const { t } = useI18n()
 const settingsStore = inject('settingsStore') as SettingsStore
 const router = useRouter()
 
@@ -46,27 +48,27 @@ const login = () => {
 <template>
   <div class="admin-login-page">
     <div class="login-card">
-      <h1>{{ isInitialSetup ? 'Setup Parent Access' : 'Parent Login' }}</h1>
-      <p>{{ isInitialSetup ? 'Create a password to protect the admin area' : 'Enter your password to access admin controls' }}</p>
+      <h1>{{ isInitialSetup ? t('adminLogin.setupParentAccess') : t('adminLogin.parentLogin') }}</h1>
+      <p>{{ isInitialSetup ? t('adminLogin.createPasswordDesc') : t('adminLogin.enterPasswordDesc') }}</p>
       
       <div class="input-group">
-        <label for="password">{{ isInitialSetup ? 'Create Password' : 'Password' }}</label>
+        <label for="password">{{ isInitialSetup ? t('adminLogin.createPassword') : t('adminLogin.password') }}</label>
         <input 
           type="password" 
           id="password" 
           v-model="password" 
-          placeholder="Enter password" 
+          :placeholder="t('adminLogin.enterPassword')" 
           @keyup.enter="login"
         />
       </div>
       
       <div class="input-group" v-if="isInitialSetup">
-        <label for="confirm-password">Confirm Password</label>
+        <label for="confirm-password">{{ t('adminLogin.confirmPassword') }}</label>
         <input 
           type="password" 
           id="confirm-password" 
           v-model="confirmPassword" 
-          placeholder="Confirm password" 
+          :placeholder="t('adminLogin.confirmPassword')" 
           @keyup.enter="login"
         />
       </div>
@@ -74,7 +76,7 @@ const login = () => {
       <div class="error-message" v-if="error">{{ error }}</div>
       
       <button class="btn btn-primary login-btn" @click="login">
-        {{ isInitialSetup ? 'Create Password' : 'Login' }}
+        {{ isInitialSetup ? t('adminLogin.createPassword') : t('adminLogin.login') }}
       </button>
     </div>
   </div>

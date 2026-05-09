@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import type { MembersStore } from '../stores/members'
 import type { TasksStore } from '../stores/tasks'
 import type { Task } from '../stores/tasks'
 import TaskCard from '../components/task/TaskCard.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 const membersStore = inject('membersStore') as MembersStore
 const tasksStore = inject('tasksStore') as TasksStore
@@ -94,11 +96,11 @@ const currentMember = computed(() => membersStore.currentMember)
   <div class="home">
     <!-- Today's Tasks -->
     <section class="todays-tasks" v-if="hasTodaysTasks">
-      <h2 v-if="currentMember">{{ currentMember.name }}的个人中心</h2>
+      <h2 v-if="currentMember">{{ currentMember.name }}的{{ t('home.personalCenter') }}</h2>
       
       <!-- Tasks for everyone -->
       <div v-if="tasksByMember['everyone'].length > 0" class="tasks-section">
-        <h3>Tasks for Everyone</h3>
+        <h3>{{ t('home.tasksForEveryone') }}</h3>
         <div class="tasks-grid">
           <TaskCard 
             v-for="task in tasksByMember['everyone']" 
@@ -115,7 +117,7 @@ const currentMember = computed(() => membersStore.currentMember)
         :key="memberId"
         class="tasks-section"
       >
-        <h3>Tasks for {{ getMember(memberId)?.name }}</h3>
+        <h3>{{ t('home.tasksFor') }} {{ getMember(memberId)?.name }}</h3>
         <div class="tasks-grid">
           <TaskCard 
             v-for="task in tasksByMember[memberId]" 
@@ -128,7 +130,7 @@ const currentMember = computed(() => membersStore.currentMember)
     
     <!-- Members Points Overview -->
     <section class="members-points" v-if="memberCount > 0">
-      <h2>Family Points</h2>
+      <h2>{{ t('home.familyPoints') }}</h2>
       <div class="grid grid-auto-fit">
         <div v-for="member in members" :key="member.id" class="card member-card">
           <div class="member-avatar" :style="{ backgroundColor: member.avatarColor }">
@@ -137,9 +139,9 @@ const currentMember = computed(() => membersStore.currentMember)
           <h3>{{ member.name }}</h3>
           <div class="points-display">
             <span class="points-value">{{ member.points }}</span>
-            <span class="points-label">积分</span>
+            <span class="points-label">{{ t('home.points') }}</span>
           </div>
-          <button class="btn btn-success" @click="router.push('/store')">Redeem Points</button>
+          <button class="btn btn-success" @click="router.push('/store')">{{ t('home.redeemPoints') }}</button>
         </div>
       </div>
     </section>
@@ -150,94 +152,94 @@ const currentMember = computed(() => membersStore.currentMember)
           <div class="current-user-avatar" :style="{ backgroundColor: currentMember.avatarColor }">
             {{ currentMember.name.charAt(0).toUpperCase() }}
           </div>
-          <h1>欢迎回来，{{ currentMember.name }}!</h1>
+          <h1>{{ t('home.welcomeBack') }}, {{ currentMember.name }}!</h1>
         </div>
-        <h1 v-else>Welcome to KidPoints!</h1>
-        <p class="hero-subtitle">A fun way to reward good behavior and track achievements</p>
+        <h1 v-else>{{ t('home.welcomeTo') }}</h1>
+        <p class="hero-subtitle">{{ t('home.subtitle') }}</p>
         <div class="hero-buttons">
-          <button class="btn btn-primary" @click="router.push('/tasks')">View Tasks</button>
-          <button class="btn btn-success" @click="router.push('/store')">Rewards Store</button>
+          <button class="btn btn-primary" @click="router.push('/tasks')">{{ t('home.viewTasks') }}</button>
+          <button class="btn btn-success" @click="router.push('/store')">{{ t('home.rewardsStore') }}</button>
         </div>
       </div>
     </section>
     
     <section class="dashboard">
-      <h2>Quick Dashboard</h2>
+      <h2>{{ t('home.quickDashboard') }}</h2>
       
       <div class="grid grid-3">
         <div class="card dashboard-card">
           <div class="dashboard-icon">👨‍👩‍👧‍👦</div>
           <h3>{{ memberCount }}</h3>
-          <p>Family Members</p>
-          <button class="btn btn-primary" @click="router.push('/members')">Manage</button>
+          <p>{{ t('home.familyMembers') }}</p>
+          <button class="btn btn-primary" @click="router.push('/members')">{{ t('home.manage') }}</button>
         </div>
         
         <div class="card dashboard-card">
           <div class="dashboard-icon">📝</div>
           <h3>{{ pendingTasksCount }}</h3>
-          <p>Pending Tasks</p>
-          <button class="btn btn-primary" @click="router.push('/tasks')">View</button>
+          <p>{{ t('home.pendingTasks') }}</p>
+          <button class="btn btn-primary" @click="router.push('/tasks')">{{ t('home.view') }}</button>
         </div>
         
         <div class="card dashboard-card">
           <div class="dashboard-icon">✅</div>
           <h3>{{ completedTasksCount }}</h3>
-          <p>Completed Tasks</p>
-          <button class="btn btn-primary" @click="router.push('/tasks')">Details</button>
+          <p>{{ t('home.completedTasks') }}</p>
+          <button class="btn btn-primary" @click="router.push('/tasks')">{{ t('home.details') }}</button>
         </div>
       </div>
     </section>
     
     <section class="features">
-      <h2>App Features</h2>
+      <h2>{{ t('home.appFeatures') }}</h2>
       
       <div class="grid grid-4">
         <div class="card feature-card">
           <div class="feature-icon">👨‍👩‍👧‍👦</div>
-          <h3>Member Profiles</h3>
-          <p>Create colorful profiles for each family member</p>
+          <h3>{{ t('home.memberProfiles') }}</h3>
+          <p>{{ t('home.memberProfilesDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">📝</div>
-          <h3>Task Management</h3>
-          <p>Create daily and weekly tasks with point values</p>
+          <h3>{{ t('home.taskManagement') }}</h3>
+          <p>{{ t('home.taskManagementDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">🏆</div>
-          <h3>Leaderboard</h3>
-          <p>Track progress and compare achievements</p>
+          <h3>{{ t('home.leaderboard') }}</h3>
+          <p>{{ t('home.leaderboardDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">🛍️</div>
-          <h3>Rewards Store</h3>
-          <p>Redeem points for exciting rewards</p>
+          <h3>{{ t('home.rewardsStore') }}</h3>
+          <p>{{ t('home.rewardsStoreDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">🎖️</div>
-          <h3>Achievements</h3>
-          <p>Collect badges for special accomplishments</p>
+          <h3>{{ t('achievements.title') }}</h3>
+          <p>{{ t('home.achievementsDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">📊</div>
-          <h3>Progress Charts</h3>
-          <p>Visualize improvement over time</p>
+          <h3>{{ t('home.progressCharts') }}</h3>
+          <p>{{ t('home.progressChartsDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">✨</div>
-          <h3>Animations</h3>
-          <p>Fun particle effects for point increases</p>
+          <h3>{{ t('home.animations') }}</h3>
+          <p>{{ t('home.animationsDesc') }}</p>
         </div>
         
         <div class="card feature-card">
           <div class="feature-icon">🔒</div>
-          <h3>Parent Controls</h3>
-          <p>Secure admin area for parents</p>
+          <h3>{{ t('home.parentControls') }}</h3>
+          <p>{{ t('home.parentControlsDesc') }}</p>
         </div>
       </div>
     </section>

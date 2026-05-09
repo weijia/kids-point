@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Bar } from 'vue-chartjs'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
 import type { MembersStore, Member, PointHistoryEntry } from '../stores/members'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
-// Register ChartJS components
+const { t } = useI18n()
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const membersStore = inject('membersStore') as MembersStore
@@ -122,16 +123,16 @@ const closeHistoryModal = () => {
 <template>
   <div class="leaderboard-page">
     <div class="page-header">
-      <h1>Leaderboard</h1>
-      <p>See who's leading in points and track progress over time.</p>
+      <h1>{{ t('leaderboard.title') }}</h1>
+      <p>{{ t('leaderboard.description') }}</p>
     </div>
     
     <!-- Chart Section -->
     <div class="chart-section">
-      <h2>Points Comparison</h2>
+      <h2>{{ t('leaderboard.pointsComparison') }}</h2>
       
       <div v-if="leaderboard.length === 0" class="empty-state">
-        <p>No members added yet. Add family members to see the leaderboard!</p>
+        <p>{{ t('leaderboard.noMembers') }}</p>
       </div>
       
       <div v-else class="chart-container">
@@ -141,10 +142,10 @@ const closeHistoryModal = () => {
     
     <!-- Leaderboard Section -->
     <div class="rankings-section">
-      <h2>Rankings</h2>
+      <h2>{{ t('leaderboard.rankings') }}</h2>
       
       <div v-if="leaderboard.length === 0" class="empty-state">
-        <p>No members added yet. Add family members to see the leaderboard!</p>
+        <p>{{ t('leaderboard.noMembers') }}</p>
       </div>
       
       <div v-else class="rankings-list">
@@ -168,10 +169,10 @@ const closeHistoryModal = () => {
           
           <div class="points">
             <span>{{ member.points }}</span>
-            <small>points</small>
+            <small>{{ t('leaderboard.points') }}</small>
           </div>
           
-          <button class="btn btn-primary view-history-btn">View History</button>
+          <button class="btn btn-primary view-history-btn">{{ t('leaderboard.viewHistory') }}</button>
         </div>
       </div>
     </div>
@@ -186,22 +187,22 @@ const closeHistoryModal = () => {
               :color="selectedMember.avatarColor" 
               size="md" 
             />
-            <h2>{{ selectedMember.name }}'s History</h2>
+            <h2>{{ selectedMember.name }}'s {{ t('leaderboard.history') }}</h2>
           </div>
           
           <div class="time-filter">
-            <label for="time-range">Time Range:</label>
+            <label for="time-range">{{ t('leaderboard.timeRange') }}:</label>
             <select id="time-range" v-model="timeRange">
-              <option value="week">Last 7 Days</option>
-              <option value="month">Last 30 Days</option>
-              <option value="year">Last Year</option>
-              <option value="all">All Time</option>
+              <option value="week">{{ t('leaderboard.last7Days') }}</option>
+              <option value="month">{{ t('leaderboard.last30Days') }}</option>
+              <option value="year">{{ t('leaderboard.lastYear') }}</option>
+              <option value="all">{{ t('leaderboard.allTime') }}</option>
             </select>
           </div>
         </div>
         
         <div v-if="memberHistory.length === 0" class="empty-state">
-          <p>No point history in the selected time range.</p>
+          <p>{{ t('leaderboard.noHistory') }}</p>
         </div>
         
         <div v-else class="history-list">
@@ -213,13 +214,13 @@ const closeHistoryModal = () => {
             <div class="history-details">
               <div class="history-reason">{{ entry.reason }}</div>
               <div class="history-points" :class="{ 'negative': entry.points < 0 }">
-                {{ entry.points > 0 ? '+' : '' }}{{ entry.points }} points
+                {{ entry.points > 0 ? '+' : '' }}{{ entry.points }} {{ t('leaderboard.points') }}
               </div>
             </div>
           </div>
         </div>
         
-        <button class="btn btn-primary close-btn" @click="closeHistoryModal">Close</button>
+        <button class="btn btn-primary close-btn" @click="closeHistoryModal">{{ t('common.close') }}</button>
       </div>
     </div>
   </div>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { MembersStore, Member } from '../stores/members'
 import MemberCard from '../components/member/MemberCard.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
+const { t } = useI18n()
 const membersStore = inject('membersStore') as MembersStore
 
 // New member form data
@@ -81,26 +83,26 @@ const deleteMember = () => {
 <template>
   <div class="members-page">
     <div class="page-header">
-      <h1>Family Members</h1>
-      <p>Manage the members of your family who can earn points and redeem rewards.</p>
+      <h1>{{ t('members.title') }}</h1>
+      <p>{{ t('members.description') }}</p>
     </div>
     
     <!-- Add new member form -->
     <div class="card form-card">
-      <h2>Add New Member</h2>
+      <h2>{{ t('members.addMember') }}</h2>
       
       <div class="input-group">
-        <label for="member-name">Name</label>
+        <label for="member-name">{{ t('members.memberName') }}</label>
         <input 
           type="text" 
           id="member-name" 
           v-model="newMember.name" 
-          placeholder="Enter name"
+          :placeholder="t('members.enterName')"
         />
       </div>
       
       <div class="input-group">
-        <label>Avatar Color</label>
+        <label>{{ t('members.selectColor') }}</label>
         <div class="color-picker">
           <div 
             v-for="color in colorOptions" 
@@ -114,26 +116,26 @@ const deleteMember = () => {
       </div>
       
       <div class="preview">
-        <p>Preview:</p>
+        <p>{{ t('members.preview') }}:</p>
         <div class="avatar-preview">
           <MemberAvatar 
-            :name="newMember.name || 'Preview'" 
+            :name="newMember.name || t('members.preview')" 
             :color="newMember.avatarColor" 
             size="md" 
           />
-          <span>{{ newMember.name || 'Preview' }}</span>
+          <span>{{ newMember.name || t('members.preview') }}</span>
         </div>
       </div>
       
-      <button class="btn btn-primary" @click="addMember">Add Member</button>
+      <button class="btn btn-primary" @click="addMember">{{ t('members.addMember') }}</button>
     </div>
     
     <!-- Members list -->
     <div class="members-section">
-      <h2>Your Family</h2>
+      <h2>{{ t('members.yourFamily') }}</h2>
       
       <div v-if="members.length === 0" class="empty-state">
-        <p>No members added yet. Add your first family member above!</p>
+        <p>{{ t('members.noMembers') }}</p>
       </div>
       
       <div v-else class="members-grid">
@@ -149,20 +151,20 @@ const deleteMember = () => {
     <!-- Edit member modal -->
     <div class="modal-backdrop" v-if="editingMember" @click="editingMember = null">
       <div class="modal" @click.stop>
-        <h2>Edit Member</h2>
+        <h2>{{ t('members.editMember') }}</h2>
         
         <div class="input-group">
-          <label for="edit-name">Name</label>
+          <label for="edit-name">{{ t('members.memberName') }}</label>
           <input 
             type="text" 
             id="edit-name" 
             v-model="editingMember.name" 
-            placeholder="Enter name"
+            :placeholder="t('members.enterName')"
           />
         </div>
         
         <div class="input-group">
-          <label>Avatar Color</label>
+          <label>{{ t('members.selectColor') }}</label>
           <div class="color-picker">
             <div 
               v-for="color in colorOptions" 
@@ -176,8 +178,8 @@ const deleteMember = () => {
         </div>
         
         <div class="modal-actions">
-          <button class="btn btn-danger" @click="deleteMember">Delete</button>
-          <button class="btn btn-primary" @click="updateMember">Save Changes</button>
+          <button class="btn btn-danger" @click="deleteMember">{{ t('members.delete') }}</button>
+          <button class="btn btn-primary" @click="updateMember">{{ t('members.saveChanges') }}</button>
         </div>
       </div>
     </div>

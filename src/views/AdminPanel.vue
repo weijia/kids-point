@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import type { SettingsStore, WebDAVSyncConfig } from '../stores/settings'
 import type { RewardsStore } from '../stores/rewards'
 import type { AchievementsStore } from '../stores/achievements'
 import { databaseService, type SyncStatus } from '../services/database'
 
+const { t } = useI18n()
+const router = useRouter()
 const settingsStore = inject('settingsStore') as SettingsStore
 const rewardsStore = inject('rewardsStore') as RewardsStore
 const achievementsStore = inject('achievementsStore') as AchievementsStore
-const router = useRouter()
 
 const newReward = ref({
   title: '',
@@ -96,14 +98,14 @@ const addAchievement = () => {
 }
 
 const deleteReward = (id: string) => {
-  const confirmed = confirm('Are you sure you want to delete this reward?')
+  const confirmed = confirm(t('admin.confirmDelete'))
   if (confirmed) {
     rewardsStore.deleteReward(id)
   }
 }
 
 const deleteAchievement = (id: string) => {
-  const confirmed = confirm('Are you sure you want to delete this achievement?')
+  const confirmed = confirm(t('admin.confirmDelete'))
   if (confirmed) {
     achievementsStore.deleteAchievement(id)
   }
@@ -118,14 +120,14 @@ const saveWebDAVConfig = () => {
     lastSyncTime: settingsStore.settings.webdavSync?.lastSyncTime || null
   }
   settingsStore.configureWebDAV(config)
-  syncMessage.value = 'WebDAV configuration saved!'
+  syncMessage.value = t('webdav.configSaved')
   setTimeout(() => syncMessage.value = '', 3000)
 }
 
 const testWebDAVConnection = async () => {
   try {
     syncStatus.value = 'syncing'
-    syncMessage.value = 'Testing connection...'
+    syncMessage.value = t('webdav.syncing')
     
     await databaseService.initialize('kidspoints')
     await databaseService.configureWebDAV({
@@ -134,14 +136,14 @@ const testWebDAVConnection = async () => {
       password: webdavConfig.value.password
     })
     
-    syncMessage.value = 'Connection test successful!'
+    syncMessage.value = t('webdav.connectionSuccess')
     syncStatus.value = 'synced'
     setTimeout(() => {
       syncMessage.value = ''
       syncStatus.value = 'idle'
     }, 3000)
   } catch (error) {
-    syncMessage.value = 'Connection failed: ' + (error as Error).message
+    syncMessage.value = t('webdav.connectionFailed') + ': ' + (error as Error).message
     syncStatus.value = 'error'
   }
 }
@@ -149,7 +151,7 @@ const testWebDAVConnection = async () => {
 const syncNow = async () => {
   try {
     syncStatus.value = 'syncing'
-    syncMessage.value = 'Syncing data to WebDAV...'
+    syncMessage.value = t('webdav.syncing')
     
     await databaseService.syncToWebDAV()
     
@@ -160,14 +162,14 @@ const syncNow = async () => {
       })
     }
     
-    syncMessage.value = 'Sync completed successfully!'
+    syncMessage.value = t('webdav.syncSuccess')
     syncStatus.value = 'synced'
     setTimeout(() => {
       syncMessage.value = ''
       syncStatus.value = 'idle'
     }, 3000)
   } catch (error) {
-    syncMessage.value = 'Sync failed: ' + (error as Error).message
+    syncMessage.value = t('webdav.syncFailed') + ': ' + (error as Error).message
     syncStatus.value = 'error'
   }
 }
@@ -175,18 +177,18 @@ const syncNow = async () => {
 const loadFromWebDAV = async () => {
   try {
     syncStatus.value = 'syncing'
-    syncMessage.value = 'Loading data from WebDAV...'
+    syncMessage.value = t('webdav.syncing')
     
     await databaseService.loadFromWebDAV()
     
-    syncMessage.value = 'Data loaded successfully! Please refresh the page.'
+    syncMessage.value = t('webdav.loadSuccess')
     syncStatus.value = 'synced'
     setTimeout(() => {
       syncMessage.value = ''
       syncStatus.value = 'idle'
     }, 3000)
   } catch (error) {
-    syncMessage.value = 'Load failed: ' + (error as Error).message
+    syncMessage.value = t('webdav.loadFailed') + ': ' + (error as Error).message
     syncStatus.value = 'error'
   }
 }
@@ -194,29 +196,21 @@ const loadFromWebDAV = async () => {
 const disableWebDAV = () => {
   settingsStore.disableWebDAV()
   webdavConfig.value.enabled = false
-  syncMessage.value = 'WebDAV sync disabled'
+  syncMessage.value = t('webdav.syncDisabled')
   setTimeout(() => syncMessage.value = '', 3000)
 }
 
 const formatLastSync = computed(() => {
-  if (!settingsStore.settings.webdavSync?.lastSyncTime) return 'Never'
+  if (!settingsStore.settings.webdavSync?.lastSyncTime) return t('webdav.never')
   return new Date(settingsStore.settings.webdavSync.lastSyncTime).toLocaleString()
 })
 
 const resetAllData = () => {
-  const confirmed = confirm(
-    'WARNING: This will reset all members, tasks, rewards, and achievements. This action cannot be undone. Are you sure?'
-  )
+  const confirmed = confirm(t('admin.resetWarning') + '\n' + t('admin.resetConfirm'))
   
   if (confirmed) {
-    const doubleConfirmed = confirm(
-      'Are you ABSOLUTELY sure? All data will be permanently deleted.'
-    )
-    
-    if (doubleConfirmed) {
-      settingsStore.resetData()
-      alert('All data has been reset successfully.')
-    }
+    settingsStore.resetData()
+    alert(t('common.success'))
   }
 }
 
@@ -240,8 +234,7 @@ const initWebDAVForm = () => {
 <template>
   <div class="admin-panel">
     <div class="page-header">
-      <h1>Admin Panel</h1>
-      <p>Manage rewards, achievements, and system settings.</p>
+      <h1>{{ t('admin.title') }}</h1>
     </div>
     
     <div class="admin-tabs">
@@ -250,7 +243,7 @@ const initWebDAVForm = () => {
         :class="{ active: activeTab === 'rewards' }"
         @click="activeTab = 'rewards'"
       >
-        🎁 Rewards
+        🎁 {{ t('admin.rewards') }}
       </button>
       
       <button 
@@ -258,7 +251,7 @@ const initWebDAVForm = () => {
         :class="{ active: activeTab === 'achievements' }"
         @click="activeTab = 'achievements'"
       >
-        🏆 Achievements
+        🏆 {{ t('admin.achievements') }}
       </button>
       
       <button 
@@ -266,7 +259,7 @@ const initWebDAVForm = () => {
         :class="{ active: activeTab === 'webdav' }"
         @click="activeTab = 'webdav'; initWebDAVForm()"
       >
-        ☁️ WebDAV Sync
+        ☁️ {{ t('admin.webdav') }}
       </button>
       
       <button 
@@ -274,27 +267,27 @@ const initWebDAVForm = () => {
         :class="{ active: activeTab === 'settings' }"
         @click="activeTab = 'settings'"
       >
-        ⚙️ Settings
+        ⚙️ {{ t('admin.settings') }}
       </button>
     </div>
     
     <div class="tab-content" v-if="activeTab === 'rewards'">
       <div class="card form-card">
-        <h2>Create New Reward</h2>
+        <h2>{{ t('admin.createReward') }}</h2>
         
         <div class="form-row">
           <div class="input-group">
-            <label for="reward-title">Reward Title</label>
+            <label for="reward-title">{{ t('admin.rewardTitle') }}</label>
             <input 
               type="text" 
               id="reward-title" 
               v-model="newReward.title" 
-              placeholder="Enter reward title"
+              :placeholder="t('admin.rewardTitle')"
             />
           </div>
           
           <div class="input-group">
-            <label for="reward-points">Points Cost</label>
+            <label for="reward-points">{{ t('admin.rewardPoints') }}</label>
             <input 
               type="number" 
               id="reward-points" 
@@ -306,17 +299,17 @@ const initWebDAVForm = () => {
         </div>
         
         <div class="input-group">
-          <label for="reward-description">Description</label>
+          <label for="reward-description">{{ t('admin.rewardDescription') }}</label>
           <textarea 
             id="reward-description" 
             v-model="newReward.description" 
-            placeholder="Enter reward description"
+            :placeholder="t('admin.rewardDescription')"
             rows="2"
           ></textarea>
         </div>
         
         <div class="input-group">
-          <label>Icon</label>
+          <label>{{ t('tasks.taskIcon') }}</label>
           <div class="icon-picker">
             <div 
               v-for="icon in rewardIconOptions" 
@@ -330,14 +323,14 @@ const initWebDAVForm = () => {
           </div>
         </div>
         
-        <button class="btn btn-primary" @click="addReward">Create Reward</button>
+        <button class="btn btn-primary" @click="addReward">{{ t('admin.createReward') }}</button>
       </div>
       
       <div class="rewards-list">
-        <h2>Manage Rewards</h2>
+        <h2>{{ t('admin.rewards') }}</h2>
         
         <div v-if="rewards.length === 0" class="empty-state">
-          <p>No rewards created yet. Add your first reward above!</p>
+          <p>{{ t('store.noRewards') }}</p>
         </div>
         
         <div v-else class="admin-list">
@@ -346,9 +339,9 @@ const initWebDAVForm = () => {
             <div class="item-content">
               <h3>{{ reward.title }}</h3>
               <p>{{ reward.description }}</p>
-              <div class="item-points">{{ reward.points }} points</div>
+              <div class="item-points">{{ reward.points }} {{ t('members.points') }}</div>
             </div>
-            <button class="btn btn-danger delete-btn" @click="deleteReward(reward.id)">Delete</button>
+            <button class="btn btn-danger delete-btn" @click="deleteReward(reward.id)">{{ t('admin.delete') }}</button>
           </div>
         </div>
       </div>
@@ -356,43 +349,43 @@ const initWebDAVForm = () => {
     
     <div class="tab-content" v-if="activeTab === 'achievements'">
       <div class="card form-card">
-        <h2>Create New Achievement</h2>
+        <h2>{{ t('admin.createAchievement') }}</h2>
         
         <div class="form-row">
           <div class="input-group">
-            <label for="achievement-title">Achievement Title</label>
+            <label for="achievement-title">{{ t('admin.achievementTitle') }}</label>
             <input 
               type="text" 
               id="achievement-title" 
               v-model="newAchievement.title" 
-              placeholder="Enter achievement title"
+              :placeholder="t('admin.achievementTitle')"
             />
           </div>
           
           <div class="input-group">
-            <label for="achievement-type">Requirement Type</label>
+            <label for="achievement-type">{{ t('admin.achievementType') }}</label>
             <select id="achievement-type" v-model="newAchievement.requirement.type">
-              <option value="taskCount">Task Completion Count</option>
-              <option value="pointsTotal">Total Points Earned</option>
-              <option value="rewardsRedeemed">Rewards Redeemed</option>
-              <option value="custom">Custom</option>
+              <option value="taskCount">{{ t('admin.taskCount') }}</option>
+              <option value="pointsTotal">{{ t('admin.pointsTotal') }}</option>
+              <option value="rewardsRedeemed">{{ t('admin.rewardsRedeemed') }}</option>
+              <option value="custom">{{ t('admin.custom') }}</option>
             </select>
           </div>
         </div>
         
         <div class="input-group">
-          <label for="achievement-description">Description</label>
+          <label for="achievement-description">{{ t('admin.rewardDescription') }}</label>
           <textarea 
             id="achievement-description" 
             v-model="newAchievement.description" 
-            placeholder="Enter achievement description"
+            :placeholder="t('admin.rewardDescription')"
             rows="2"
           ></textarea>
         </div>
         
         <div class="form-row">
           <div class="input-group">
-            <label for="requirement-count">Required Count</label>
+            <label for="requirement-count">{{ t('admin.requirementCount') }}</label>
             <input 
               type="number" 
               id="requirement-count" 
@@ -401,20 +394,10 @@ const initWebDAVForm = () => {
               max="1000"
             />
           </div>
-          
-          <div class="input-group" v-if="newAchievement.requirement.type === 'taskType' as any">
-            <label for="task-type">Task Type</label>
-            <input 
-              type="text" 
-              id="task-type" 
-              v-model="newAchievement.requirement.taskType" 
-              placeholder="Enter task type"
-            />
-          </div>
         </div>
         
         <div class="input-group">
-          <label>Icon</label>
+          <label>{{ t('tasks.taskIcon') }}</label>
           <div class="icon-picker">
             <div 
               v-for="icon in achievementIconOptions" 
@@ -428,14 +411,14 @@ const initWebDAVForm = () => {
           </div>
         </div>
         
-        <button class="btn btn-primary" @click="addAchievement">Create Achievement</button>
+        <button class="btn btn-primary" @click="addAchievement">{{ t('admin.createAchievement') }}</button>
       </div>
       
       <div class="achievements-list">
-        <h2>Manage Achievements</h2>
+        <h2>{{ t('admin.achievements') }}</h2>
         
         <div v-if="achievements.length === 0" class="empty-state">
-          <p>No achievements created yet. Add your first achievement above!</p>
+          <p>{{ t('achievements.noAchievements') }}</p>
         </div>
         
         <div v-else class="admin-list">
@@ -445,14 +428,14 @@ const initWebDAVForm = () => {
               <h3>{{ achievement.title }}</h3>
               <p>{{ achievement.description }}</p>
               <div class="item-requirement">
-                Requires: {{ achievement.requirement.count }} 
-                {{ achievement.requirement.type === 'taskCount' ? 'tasks completed' : 
-                   achievement.requirement.type === 'pointsTotal' ? 'total points' : 
-                   achievement.requirement.type === 'rewardsRedeemed' ? 'rewards redeemed' : 
-                   'custom goal' }}
+                {{ t('achievements.requirement') }}: {{ achievement.requirement.count }} 
+                {{ achievement.requirement.type === 'taskCount' ? t('admin.taskCount') : 
+                   achievement.requirement.type === 'pointsTotal' ? t('admin.pointsTotal') : 
+                   achievement.requirement.type === 'rewardsRedeemed' ? t('admin.rewardsRedeemed') : 
+                   t('admin.custom') }}
               </div>
             </div>
-            <button class="btn btn-danger delete-btn" @click="deleteAchievement(achievement.id)">Delete</button>
+            <button class="btn btn-danger delete-btn" @click="deleteAchievement(achievement.id)">{{ t('admin.delete') }}</button>
           </div>
         </div>
       </div>
@@ -460,10 +443,9 @@ const initWebDAVForm = () => {
 
     <div class="tab-content" v-if="activeTab === 'webdav'">
       <div class="card webdav-card">
-        <h2>☁️ WebDAV Synchronization</h2>
+        <h2>☁️ {{ t('webdav.title') }}</h2>
         <p class="webdav-description">
-          Configure WebDAV sync to backup and synchronize your data across devices.
-          Data will be stored using the universal-sync-v2 format.
+          {{ t('webdav.description') }}
         </p>
         
         <div v-if="syncMessage" class="sync-message" :class="syncStatus">
@@ -471,36 +453,36 @@ const initWebDAVForm = () => {
         </div>
         
         <div class="form-section">
-          <h3>Server Configuration</h3>
+          <h3>{{ t('webdav.serverConfig') }}</h3>
           
           <div class="input-group">
-            <label for="webdav-url">WebDAV URL</label>
+            <label for="webdav-url">{{ t('webdav.url') }}</label>
             <input 
               type="text" 
               id="webdav-url" 
               v-model="webdavConfig.url" 
-              placeholder="https://your-webdav-server.com/dav/"
+              :placeholder="t('webdav.url')"
             />
           </div>
           
           <div class="form-row">
             <div class="input-group">
-              <label for="webdav-username">Username</label>
+              <label for="webdav-username">{{ t('webdav.username') }}</label>
               <input 
                 type="text" 
                 id="webdav-username" 
                 v-model="webdavConfig.username" 
-                placeholder="your-username"
+                :placeholder="t('webdav.username')"
               />
             </div>
             
             <div class="input-group">
-              <label for="webdav-password">Password</label>
+              <label for="webdav-password">{{ t('webdav.password') }}</label>
               <input 
                 type="password" 
                 id="webdav-password" 
                 v-model="webdavConfig.password" 
-                placeholder="your-password"
+                :placeholder="t('webdav.password')"
               />
             </div>
           </div>
@@ -511,54 +493,54 @@ const initWebDAVForm = () => {
                 type="checkbox" 
                 v-model="webdavConfig.enabled"
               />
-              <span>Enable automatic WebDAV sync</span>
+              <span>{{ t('webdav.enableAutoSync') }}</span>
             </label>
           </div>
         </div>
         
         <div class="button-group">
           <button class="btn btn-secondary" @click="testWebDAVConnection">
-            🔗 Test Connection
+            🔗 {{ t('webdav.testConnection') }}
           </button>
           <button class="btn btn-primary" @click="saveWebDAVConfig">
-            💾 Save Configuration
+            💾 {{ t('webdav.saveConfig') }}
           </button>
         </div>
         
         <div v-if="hasWebDAVConfig" class="sync-section">
-          <h3>Sync Status</h3>
+          <h3>{{ t('webdav.syncStatus') }}</h3>
           
           <div class="sync-info">
             <div class="sync-info-item">
-              <span class="label">Status:</span>
+              <span class="label">{{ t('webdav.status') }}:</span>
               <span class="value" :class="'status-' + syncStatus">
-                {{ syncStatus === 'idle' ? 'Ready' : 
-                   syncStatus === 'syncing' ? 'Syncing...' : 
-                   syncStatus === 'synced' ? 'Synced' : 'Error' }}
+                {{ syncStatus === 'idle' ? t('webdav.idle') : 
+                   syncStatus === 'syncing' ? t('webdav.syncing') : 
+                   syncStatus === 'synced' ? t('webdav.synced') : t('webdav.error') }}
               </span>
             </div>
             <div class="sync-info-item">
-              <span class="label">Last Sync:</span>
+              <span class="label">{{ t('webdav.lastSync') }}:</span>
               <span class="value">{{ formatLastSync }}</span>
             </div>
             <div class="sync-info-item">
-              <span class="label">Enabled:</span>
-              <span class="value">{{ isWebDAVEnabled ? 'Yes' : 'No' }}</span>
+              <span class="label">{{ t('webdav.enabled') }}:</span>
+              <span class="value">{{ isWebDAVEnabled ? t('common.yes') : t('common.no') }}</span>
             </div>
           </div>
           
           <div class="button-group">
             <button class="btn btn-primary" @click="syncNow" :disabled="syncStatus === 'syncing'">
-              📤 Sync to WebDAV
+              📤 {{ t('webdav.syncToWebDAV') }}
             </button>
             <button class="btn btn-secondary" @click="loadFromWebDAV" :disabled="syncStatus === 'syncing'">
-              📥 Load from WebDAV
+              📥 {{ t('webdav.loadFromWebDAV') }}
             </button>
           </div>
           
           <div class="danger-zone">
             <button class="btn btn-danger" @click="disableWebDAV">
-              🚫 Disable WebDAV Sync
+              🚫 {{ t('webdav.disableWebDAV') }}
             </button>
           </div>
         </div>
@@ -567,17 +549,17 @@ const initWebDAVForm = () => {
     
     <div class="tab-content" v-if="activeTab === 'settings'">
       <div class="card settings-card">
-        <h2>System Settings</h2>
+        <h2>{{ t('admin.systemSettings') }}</h2>
         
         <div class="settings-section">
-          <h3>Data Management</h3>
-          <p class="warning-text">Warning: The following action cannot be undone!</p>
-          <button class="btn btn-danger" @click="resetAllData">Reset All Data</button>
+          <h3>{{ t('admin.dataManagement') }}</h3>
+          <p class="warning-text">{{ t('admin.resetWarning') }}</p>
+          <button class="btn btn-danger" @click="resetAllData">{{ t('admin.resetData') }}</button>
         </div>
         
         <div class="settings-section">
-          <h3>Admin Access</h3>
-          <button class="btn btn-primary" @click="logout">Logout</button>
+          <h3>{{ t('nav.admin') }}</h3>
+          <button class="btn btn-primary" @click="logout">{{ t('admin.logout') }}</button>
         </div>
       </div>
     </div>

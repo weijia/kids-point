@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref } from 'vue'
+import { onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Navbar from './components/layout/Navbar.vue'
 import Footer from './components/layout/Footer.vue'
 import { useMembers } from './stores/members'
@@ -11,6 +12,7 @@ import { useSettings } from './stores/settings'
 import { databaseService } from './services/database'
 
 const router = useRouter()
+const { locale } = useI18n()
 
 const membersStore = useMembers()
 const tasksStore = useTasks()
@@ -26,6 +28,10 @@ provide('tasksStore', tasksStore)
 provide('rewardsStore', rewardsStore)
 provide('achievementsStore', achievementsStore)
 provide('settingsStore', settingsStore)
+
+watch(() => settingsStore.settings.locale, (newLocale) => {
+  locale.value = newLocale
+}, { immediate: true })
 
 router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !settingsStore.isAuthenticated) {
@@ -96,11 +102,13 @@ const performAutoLoad = async () => {
 }
 
 onMounted(async () => {
+  settingsStore.loadSettings()
+  locale.value = settingsStore.settings.locale
+  
   membersStore.loadMembers()
   tasksStore.loadTasks()
   rewardsStore.loadRewards()
   achievementsStore.loadAchievements()
-  settingsStore.loadSettings()
   
   await initializeDatabase()
   

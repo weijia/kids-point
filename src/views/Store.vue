@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, inject, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { RewardsStore, Reward } from '../stores/rewards'
 import type { MembersStore } from '../stores/members'
 import RewardCard from '../components/reward/RewardCard.vue'
 import MemberAvatar from '../components/member/MemberAvatar.vue'
 
+const { t } = useI18n()
 const rewardsStore = inject('rewardsStore') as RewardsStore
 const membersStore = inject('membersStore') as MembersStore
 
@@ -175,26 +177,26 @@ const formatDate = (timestamp: number) => {
 <template>
   <div class="store-page">
     <div class="page-header">
-      <h1>Rewards Store</h1>
-      <p>Redeem your hard-earned points for exciting rewards!</p>
+      <h1>{{ t('store.title') }}</h1>
+      <p>{{ t('store.subtitle') }}</p>
     </div>
     
     <!-- Member Selector -->
     <div v-if="members.length > 0" class="member-selector">
-      <label for="member-select">Shopping as:</label>
+      <label for="member-select">{{ t('store.shoppingAs') }}:</label>
       <select id="member-select" v-model="selectedMemberId">
         <option v-for="member in members" :key="member.id" :value="member.id">
-          {{ member.name }} ({{ member.points }} points)
+          {{ member.name }} ({{ member.points }} {{ t('store.points') }})
         </option>
       </select>
     </div>
     
     <div v-if="members.length === 0" class="empty-state">
-      <p>No family members added yet. Add members before visiting the store!</p>
+      <p>{{ t('store.noMembers') }}</p>
     </div>
     
     <div v-else-if="!selectedMember" class="empty-state">
-      <p>Please select a family member to browse the store.</p>
+      <p>{{ t('store.selectMember') }}</p>
     </div>
     
     <div v-else class="store-content">
@@ -211,16 +213,16 @@ const formatDate = (timestamp: number) => {
         
         <div class="member-points">
           <span class="points-value">{{ selectedMember.points }}</span>
-          <span class="points-label">Available Points</span>
+          <span class="points-label">{{ t('store.availablePoints') }}</span>
         </div>
       </div>
       
       <!-- Rewards Section -->
       <div class="rewards-section">
-        <h2>Available Rewards</h2>
+        <h2>{{ t('store.availableRewards') }}</h2>
         
         <div v-if="rewards.length === 0" class="empty-state">
-          <p>No rewards available yet. Check back soon!</p>
+          <p>{{ t('store.noRewards') }}</p>
         </div>
         
         <div v-else class="rewards-grid">
@@ -236,13 +238,13 @@ const formatDate = (timestamp: number) => {
       
       <!-- Admin Section -->
       <div v-if="selectedMember?.isAdmin" class="admin-section">
-        <h2>Reward Management</h2>
+        <h2>{{ t('store.rewardManagement') }}</h2>
         
         <!-- Existing Rewards Management -->
         <div class="admin-rewards-list">
-          <h3>Manage Existing Rewards</h3>
+          <h3>{{ t('store.manageExistingRewards') }}</h3>
           <div v-if="rewards.length === 0" class="empty-state">
-            <p>No rewards available. Add your first reward below!</p>
+            <p>{{ t('store.addFirstReward') }}</p>
           </div>
           <div v-else class="admin-rewards-grid">
             <div v-for="reward in rewards" :key="reward.id" class="admin-reward-item">
@@ -250,41 +252,41 @@ const formatDate = (timestamp: number) => {
                 <div class="admin-reward-icon">{{ reward.icon }}</div>
                 <div class="admin-reward-info">
                   <h4>{{ reward.title }}</h4>
-                  <p>{{ reward.points }} points</p>
+                  <p>{{ reward.points }} {{ t('store.points') }}</p>
                 </div>
               </div>
               <div class="admin-reward-actions">
-                <button @click="openEditForm(reward)" class="btn-edit">Edit</button>
-                <button @click="openDeleteConfirm(reward)" class="btn-delete">Delete</button>
+                <button @click="openEditForm(reward)" class="btn-edit">{{ t('store.edit') }}</button>
+                <button @click="openDeleteConfirm(reward)" class="btn-delete">{{ t('store.delete') }}</button>
               </div>
             </div>
           </div>
         </div>
         
-        <h3 class="mt-lg">Add New Reward</h3>
+        <h3 class="mt-lg">{{ t('store.addNewReward') }}</h3>
         <form @submit.prevent="addReward" class="admin-form">
           <div class="form-group">
-            <label for="reward-title">Title</label>
+            <label for="reward-title">{{ t('store.title') }}</label>
             <input 
               id="reward-title"
               v-model="newReward.title"
               type="text"
               required
-              placeholder="Enter reward title"
+              :placeholder="t('store.enterRewardTitle')"
             >
           </div>
           
           <div class="form-group">
-            <label for="reward-description">Description</label>
+            <label for="reward-description">{{ t('store.description') }}</label>
             <textarea
               id="reward-description"
               v-model="newReward.description"
-              placeholder="Enter reward description"
+              :placeholder="t('store.enterRewardDescription')"
             ></textarea>
           </div>
           
           <div class="form-group">
-            <label>Icon</label>
+            <label>{{ t('store.icon') }}</label>
             <div class="icon-selector">
               <button
                 v-for="icon in iconOptions"
@@ -299,7 +301,7 @@ const formatDate = (timestamp: number) => {
           </div>
           
           <div class="form-group">
-            <label for="reward-points">Points Required</label>
+            <label for="reward-points">{{ t('store.pointsRequired') }}</label>
             <input
               id="reward-points"
               v-model.number="newReward.points"
@@ -309,16 +311,16 @@ const formatDate = (timestamp: number) => {
             >
           </div>
           
-          <button type="submit" class="submit-button">Add Reward</button>
+          <button type="submit" class="submit-button">{{ t('store.addReward') }}</button>
         </form>
       </div>
       
       <!-- Redemption History -->
       <div class="history-section">
-        <h2>Redemption History</h2>
+        <h2>{{ t('store.redemptionHistory') }}</h2>
         
         <div v-if="redemptionHistory.length === 0" class="empty-state">
-          <p>No rewards redeemed yet. Use your points to get something special!</p>
+          <p>{{ t('store.noRedemptions') }}</p>
         </div>
         
         <div v-else class="history-list">
@@ -326,11 +328,11 @@ const formatDate = (timestamp: number) => {
             <div class="history-icon">{{ item.reward.icon }}</div>
             <div class="history-content">
               <h4>{{ item.reward.title }}</h4>
-              <p class="history-date">Redeemed on {{ formatDate(item.date) }}</p>
+              <p class="history-date">{{ t('store.redeemedOn') }} {{ formatDate(item.date) }}</p>
             </div>
             <div class="history-points">
               <span>{{ item.reward.points }}</span>
-              <small>points</small>
+              <small>{{ t('store.points') }}</small>
             </div>
           </div>
         </div>
@@ -342,8 +344,8 @@ const formatDate = (timestamp: number) => {
       <div class="success-content">
         <div class="success-icon">🎉</div>
         <div class="success-message">
-          <h3>Congratulations!</h3>
-          <p>You've successfully redeemed "{{ redeemedReward?.title }}" for {{ redeemedReward?.points }} points!</p>
+          <h3>{{ t('store.congratulations') }}</h3>
+          <p>{{ t('store.successfullyRedeemed') }} "{{ redeemedReward?.title }}" {{ t('store.for') }} {{ redeemedReward?.points }} {{ t('store.points') }}!</p>
         </div>
       </div>
     </div>
@@ -352,8 +354,8 @@ const formatDate = (timestamp: number) => {
       <div class="success-content">
         <div class="success-icon">✅</div>
         <div class="success-message">
-          <h3>Reward Updated</h3>
-          <p>The reward has been successfully updated.</p>
+          <h3>{{ t('store.rewardUpdated') }}</h3>
+          <p>{{ t('store.rewardUpdatedDesc') }}</p>
         </div>
       </div>
     </div>
@@ -362,8 +364,8 @@ const formatDate = (timestamp: number) => {
       <div class="success-content">
         <div class="success-icon">🗑️</div>
         <div class="success-message">
-          <h3>Reward Deleted</h3>
-          <p>The reward has been successfully removed.</p>
+          <h3>{{ t('store.rewardDeleted') }}</h3>
+          <p>{{ t('store.rewardDeletedDesc') }}</p>
         </div>
       </div>
     </div>
@@ -373,33 +375,33 @@ const formatDate = (timestamp: number) => {
       <div class="modal-overlay" @click="showEditForm = false"></div>
       <div class="modal-container">
         <div class="modal-header">
-          <h3>Edit Reward</h3>
+          <h3>{{ t('store.editReward') }}</h3>
           <button @click="showEditForm = false" class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
           <form @submit.prevent="saveEditedReward" class="admin-form">
             <div class="form-group">
-              <label for="edit-reward-title">Title</label>
+              <label for="edit-reward-title">{{ t('store.title') }}</label>
               <input 
                 id="edit-reward-title"
                 v-model="editForm.title"
                 type="text"
                 required
-                placeholder="Enter reward title"
+                :placeholder="t('store.enterRewardTitle')"
               >
             </div>
             
             <div class="form-group">
-              <label for="edit-reward-description">Description</label>
+              <label for="edit-reward-description">{{ t('store.description') }}</label>
               <textarea
                 id="edit-reward-description"
                 v-model="editForm.description"
-                placeholder="Enter reward description"
+                :placeholder="t('store.enterRewardDescription')"
               ></textarea>
             </div>
             
             <div class="form-group">
-              <label>Icon</label>
+              <label>{{ t('store.icon') }}</label>
               <div class="icon-selector">
                 <button
                   v-for="icon in iconOptions"
@@ -414,7 +416,7 @@ const formatDate = (timestamp: number) => {
             </div>
             
             <div class="form-group">
-              <label for="edit-reward-points">Points Required</label>
+              <label for="edit-reward-points">{{ t('store.pointsRequired') }}</label>
               <input
                 id="edit-reward-points"
                 v-model.number="editForm.points"
@@ -425,8 +427,8 @@ const formatDate = (timestamp: number) => {
             </div>
             
             <div class="modal-actions">
-              <button type="button" @click="showEditForm = false" class="btn-cancel">Cancel</button>
-              <button type="submit" class="btn-save">Save Changes</button>
+              <button type="button" @click="showEditForm = false" class="btn-cancel">{{ t('common.cancel') }}</button>
+              <button type="submit" class="btn-save">{{ t('store.saveChanges') }}</button>
             </div>
           </form>
         </div>
@@ -438,19 +440,19 @@ const formatDate = (timestamp: number) => {
       <div class="modal-overlay" @click="cancelDelete"></div>
       <div class="modal-container delete-modal">
         <div class="modal-header">
-          <h3>Delete Reward</h3>
+          <h3>{{ t('store.deleteReward') }}</h3>
           <button @click="cancelDelete" class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
           <div class="delete-warning">
             <div class="warning-icon">⚠️</div>
-            <p>Are you sure you want to delete <strong>{{ rewardToDelete?.title }}</strong>?</p>
-            <p class="warning-text">This action cannot be undone.</p>
+            <p>{{ t('store.deleteConfirm') }} <strong>{{ rewardToDelete?.title }}</strong>?</p>
+            <p class="warning-text">{{ t('store.cannotUndo') }}</p>
           </div>
           
           <div class="modal-actions">
-            <button @click="cancelDelete" class="btn-cancel">Cancel</button>
-            <button @click="confirmDelete" class="btn-delete">Delete</button>
+            <button @click="cancelDelete" class="btn-cancel">{{ t('common.cancel') }}</button>
+            <button @click="confirmDelete" class="btn-delete">{{ t('store.delete') }}</button>
           </div>
         </div>
       </div>

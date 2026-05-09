@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, inject, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TasksStore, Task } from '../stores/tasks'
 import type { MembersStore } from '../stores/members'
 import TaskCard from '../components/task/TaskCard.vue'
 
+const { t } = useI18n()
 const tasksStore = inject('tasksStore') as TasksStore
 const membersStore = inject('membersStore') as MembersStore
 
@@ -145,27 +147,27 @@ const deleteTask = () => {
 <template>
   <div class="tasks-page">
     <div class="page-header">
-      <h1>Tasks</h1>
-      <p>Create and manage tasks for your family members to complete.</p>
+      <h1>{{ t('tasks.title') }}</h1>
+      <p>{{ t('tasks.description') }}</p>
     </div>
     
     <!-- Add new task form -->
     <div class="card form-card">
-      <h2>Create New Task</h2>
+      <h2>{{ t('tasks.createNewTask') }}</h2>
       
       <div class="form-row">
         <div class="input-group">
-          <label for="task-title">Task Title</label>
+          <label for="task-title">{{ t('tasks.taskTitle') }}</label>
           <input 
             type="text" 
             id="task-title" 
             v-model="newTask.title" 
-            placeholder="Enter task title"
+            :placeholder="t('tasks.enterTaskTitle')"
           />
         </div>
         
         <div class="input-group">
-          <label for="task-points">Points</label>
+          <label for="task-points">{{ t('tasks.taskPoints') }}</label>
           <input 
             type="number" 
             id="task-points" 
@@ -177,20 +179,20 @@ const deleteTask = () => {
       </div>
       
       <div class="input-group">
-        <label for="task-description">Description</label>
+        <label for="task-description">{{ t('tasks.taskDescription') }}</label>
         <textarea 
           id="task-description" 
           v-model="newTask.description" 
-          placeholder="Enter task description"
+          :placeholder="t('tasks.enterTaskDescription')"
           rows="2"
         ></textarea>
       </div>
       
       <div class="form-row">
         <div class="input-group">
-          <label for="task-member">Assign To</label>
+          <label for="task-member">{{ t('tasks.assignTo') }}</label>
           <select id="task-member" v-model="newTask.memberId">
-            <option :value="null">Everyone</option>
+            <option :value="null">{{ t('tasks.everyone') }}</option>
             <option v-for="member in members" :key="member.id" :value="member.id">
               {{ member.name }}
             </option>
@@ -198,17 +200,17 @@ const deleteTask = () => {
         </div>
         
         <div class="input-group">
-          <label for="task-frequency">Frequency</label>
+          <label for="task-frequency">{{ t('tasks.taskFrequency') }}</label>
           <select id="task-frequency" v-model="newTask.frequency">
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="once">One Time</option>
+            <option value="daily">{{ t('tasks.daily') }}</option>
+            <option value="weekly">{{ t('tasks.weekly') }}</option>
+            <option value="once">{{ t('tasks.once') }}</option>
           </select>
         </div>
       </div>
       
       <div class="input-group">
-        <label>Icon</label>
+        <label>{{ t('tasks.taskIcon') }}</label>
         <div class="icon-picker">
           <div 
             v-for="icon in iconOptions" 
@@ -222,28 +224,28 @@ const deleteTask = () => {
         </div>
       </div>
       
-      <button class="btn btn-primary" @click="addTask">Create Task</button>
+      <button class="btn btn-primary" @click="addTask">{{ t('tasks.createTask') }}</button>
     </div>
     
     <!-- Tasks list -->
     <div class="tasks-section">
-      <h2>Task List</h2>
+      <h2>{{ t('tasks.taskList') }}</h2>
       
       <div class="filters">
         <div class="filter-group">
-          <label for="filter-type">Status</label>
+          <label for="filter-type">{{ t('tasks.status') }}</label>
           <select id="filter-type" v-model="filterType">
-            <option value="all">All Tasks</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
+            <option value="all">{{ t('tasks.allTasks') }}</option>
+            <option value="pending">{{ t('tasks.pending') }}</option>
+            <option value="completed">{{ t('tasks.completed') }}</option>
           </select>
         </div>
         
         <div class="filter-group">
-          <label for="filter-member">Member</label>
+          <label for="filter-member">{{ t('tasks.member') }}</label>
           <select id="filter-member" v-model="filterMember">
-            <option value="all">All Members</option>
-            <option value="unassigned">Unassigned (Everyone)</option>
+            <option value="all">{{ t('tasks.allMembers') }}</option>
+            <option value="unassigned">{{ t('tasks.unassigned') }}</option>
             <option v-for="member in members" :key="member.id" :value="member.id">
               {{ member.name }}
             </option>
@@ -252,12 +254,12 @@ const deleteTask = () => {
         
         <div class="filter-group">
           <label>&nbsp;</label>
-          <button class="btn btn-secondary" @click="resetTasks">Reset Tasks</button>
+          <button class="btn btn-secondary" @click="resetTasks">{{ t('tasks.resetTasks') }}</button>
         </div>
       </div>
       
       <div v-if="filteredTasks.length === 0" class="empty-state">
-        <p>No tasks found. Create your first task above!</p>
+        <p>{{ t('tasks.noTasks') }}</p>
       </div>
       
       <div v-else class="tasks-list">
@@ -274,21 +276,21 @@ const deleteTask = () => {
     <!-- Edit task modal -->
     <div class="modal-backdrop" v-if="editingTask" @click="editingTask = null">
       <div class="modal" @click.stop>
-        <h2>Edit Task</h2>
+        <h2>{{ t('tasks.editTask') }}</h2>
         
         <div class="form-row">
           <div class="input-group">
-            <label for="edit-title">Task Title</label>
+            <label for="edit-title">{{ t('tasks.taskTitle') }}</label>
             <input 
               type="text" 
               id="edit-title" 
               v-model="editingTask.title" 
-              placeholder="Enter task title"
+              :placeholder="t('tasks.enterTaskTitle')"
             />
           </div>
           
           <div class="input-group">
-            <label for="edit-points">Points</label>
+            <label for="edit-points">{{ t('tasks.taskPoints') }}</label>
             <input 
               type="number" 
               id="edit-points" 
@@ -300,20 +302,20 @@ const deleteTask = () => {
         </div>
         
         <div class="input-group">
-          <label for="edit-description">Description</label>
+          <label for="edit-description">{{ t('tasks.taskDescription') }}</label>
           <textarea 
             id="edit-description" 
             v-model="editingTask.description" 
-            placeholder="Enter task description"
+            :placeholder="t('tasks.enterTaskDescription')"
             rows="2"
           ></textarea>
         </div>
         
         <div class="form-row">
           <div class="input-group">
-            <label for="edit-member">Assign To</label>
+            <label for="edit-member">{{ t('tasks.assignTo') }}</label>
             <select id="edit-member" v-model="editingTask.memberId">
-              <option :value="null">Everyone</option>
+              <option :value="null">{{ t('tasks.everyone') }}</option>
               <option v-for="member in members" :key="member.id" :value="member.id">
                 {{ member.name }}
               </option>
@@ -321,17 +323,17 @@ const deleteTask = () => {
           </div>
           
           <div class="input-group">
-            <label for="edit-frequency">Frequency</label>
+            <label for="edit-frequency">{{ t('tasks.taskFrequency') }}</label>
             <select id="edit-frequency" v-model="editingTask.frequency">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="once">One Time</option>
+              <option value="daily">{{ t('tasks.daily') }}</option>
+              <option value="weekly">{{ t('tasks.weekly') }}</option>
+              <option value="once">{{ t('tasks.once') }}</option>
             </select>
           </div>
         </div>
         
         <div class="input-group">
-          <label>Icon</label>
+          <label>{{ t('tasks.taskIcon') }}</label>
           <div class="icon-picker">
             <div 
               v-for="icon in iconOptions" 
@@ -346,8 +348,8 @@ const deleteTask = () => {
         </div>
         
         <div class="modal-actions">
-          <button class="btn btn-danger" @click="deleteTask">Delete</button>
-          <button class="btn btn-primary" @click="updateTask">Save Changes</button>
+          <button class="btn btn-danger" @click="deleteTask">{{ t('tasks.delete') }}</button>
+          <button class="btn btn-primary" @click="updateTask">{{ t('tasks.saveChanges') }}</button>
         </div>
       </div>
     </div>
