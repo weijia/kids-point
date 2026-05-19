@@ -184,6 +184,7 @@
     "title": "Admin Panel",
     "rewards": "Rewards",
     "achievements": "Achievements",
+    "violations": "Violations",
     "webdav": "WebDAV Sync",
     "settings": "Settings",
     "rewardTitle": "Reward Title",
@@ -270,5 +271,24 @@
   "footer": {
     "version": "Version",
     "buildTime": "Build Time"
+  },
+  "violations": {
+    "title": "Violations",
+    "addRule": "Add Violation Rule",
+    "ruleTitle": "Rule Title",
+    "pointsDeducted": "Points Deducted",
+    "recordViolation": "Record Violation",
+    "history": "Violation History",
+    "selectMember": "Select Member",
+    "selectRule": "Select Rule",
+    "note": "Note (optional)",
+    "record": "Record",
+    "noRules": "No violation rules yet",
+    "noRecords": "No violation records yet",
+    "delete": "Delete",
+    "rule": "Rule",
+    "points": "Points",
+    "time": "Time",
+    "deductPoints": "Deduct {points} points"
   }
 }

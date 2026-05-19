@@ -184,6 +184,7 @@
     "title": "管理面板",
     "rewards": "奖励",
     "achievements": "成就",
+    "violations": "违反记录",
     "webdav": "WebDAV 同步",
     "settings": "设置",
     "rewardTitle": "奖励名称",
@@ -270,5 +271,24 @@
   "footer": {
     "version": "版本",
     "buildTime": "构建时间"
+  },
+  "violations": {
+    "title": "违反记录",
+    "addRule": "添加违规规则",
+    "ruleTitle": "规则名称",
+    "pointsDeducted": "扣除积分",
+    "recordViolation": "记录违规",
+    "history": "违规历史",
+    "selectMember": "选择成员",
+    "selectRule": "选择规则",
+    "note": "备注（可选）",
+    "record": "记录",
+    "noRules": "暂无违规规则",
+    "noRecords": "暂无违规记录",
+    "delete": "删除",
+    "rule": "规则",
+    "points": "积分",
+    "time": "时间",
+    "deductPoints": "扣除 {points} 积分"
   }
 }

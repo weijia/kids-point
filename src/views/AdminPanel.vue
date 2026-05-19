@@ -5,6 +5,8 @@ import { useI18n } from 'vue-i18n'
 import { useSettings, type WebDAVSyncConfig } from '../stores/settings'
 import { useRewards } from '../stores/rewards'
 import { useAchievements } from '../stores/achievements'
+import { useViolations } from '../stores/violations'
+import { useMembers } from '../stores/members'
 import { databaseService, type SyncStatus } from '../services/database'
 
 const { t } = useI18n()
@@ -12,6 +14,12 @@ const router = useRouter()
 const settingsStore = useSettings()
 const rewardsStore = useRewards()
 const achievementsStore = useAchievements()
+const violationsStore = useViolations()
+const membersStore = useMembers()
+
+violationsStore.loadViolationRules()
+violationsStore.loadViolationRecords()
+membersStore.loadMembers()
 
 const newReward = ref({
   title: '',
@@ -49,10 +57,30 @@ const achievementIconOptions = [
   '🏆', '🥇', '🏅', '🎖️', '⭐', '🌟', '🚀', '🔥', '💯', '👑', '💪', '🧠', '❤️', '🌈', '✨'
 ]
 
+const violationIconOptions = [
+  '⚠️', '🚫', '❌', '😠', '📵', '⏰', '🧹', '📱', '💻', '🍽️', '😴', '🎮'
+]
+
+const newViolationRule = ref({
+  title: '',
+  description: '',
+  icon: '⚠️',
+  pointsDeducted: 5
+})
+
+const newViolation = ref({
+  memberId: '',
+  ruleId: '',
+  note: ''
+})
+
 const activeTab = ref('rewards')
 
 const rewards = computed(() => rewardsStore.rewards)
 const achievements = computed(() => achievementsStore.achievements)
+const violationRules = computed(() => violationsStore.violationRules)
+const violationRecords = computed(() => violationsStore.getRecentViolations(20))
+const members = computed(() => membersStore.members)
 
 const hasWebDAVConfig = computed(() => settingsStore.settings.webdavSync !== null)
 const isWebDAVEnabled = computed(() => settingsStore.settings.webdavSync?.enabled === true)
@@ -109,6 +137,78 @@ const deleteAchievement = (id: string) => {
   if (confirmed) {
     achievementsStore.deleteAchievement(id)
   }
+}
+
+const addViolationRuleHandler = () => {
+  if (newViolationRule.value.title.trim() === '') return
+  
+  violationsStore.addViolationRule({
+    title: newViolationRule.value.title.trim(),
+    description: newViolationRule.value.description.trim(),
+    icon: newViolationRule.value.icon,
+    pointsDeducted: newViolationRule.value.pointsDeducted
+  })
+  
+  newViolationRule.value = {
+    title: '',
+    description: '',
+    icon: '⚠️',
+    pointsDeducted: 5
+  }
+}
+
+const recordViolationHandler = () => {
+  if (newViolation.value.memberId === '' || newViolation.value.ruleId === '') return
+  
+  const rule = violationsStore.getViolationRule(newViolation.value.ruleId)
+  if (!rule) return
+  
+  violationsStore.recordViolation(
+    newViolation.value.ruleId,
+    newViolation.value.memberId,
+    newViolation.value.note.trim()
+  )
+  
+  membersStore.deductPoints(newViolation.value.memberId, rule.pointsDeducted)
+  
+  newViolation.value = {
+    memberId: '',
+    ruleId: '',
+    note: ''
+  }
+}
+
+const deleteViolationRule = (id: string) => {
+  const confirmed = confirm(t('admin.confirmDelete'))
+  if (confirmed) {
+    violationsStore.deleteViolationRule(id)
+  }
+}
+
+const deleteViolationRecord = (id: string) => {
+  const confirmed = confirm(t('admin.confirmDelete'))
+  if (confirmed) {
+    violationsStore.deleteViolationRecord(id)
+  }
+}
+
+const getMemberName = (memberId: string) => {
+  const member = membersStore.members.value.find(m => m.id === memberId)
+  return member ? member.name : '-'
+}
+
+const getRuleTitle = (ruleId: string) => {
+  const rule = violationsStore.getViolationRule(ruleId)
+  return rule ? rule.title : '-'
+}
+
+const getRuleIcon = (ruleId: string) => {
+  const rule = violationsStore.getViolationRule(ruleId)
+  return rule ? rule.icon : '⚠️'
+}
+
+const formatTime = (timestamp: number) => {
+  return new Date(timestamp).toLocaleString()
 }
 
 const saveWebDAVConfig = () => {
@@ -252,6 +352,14 @@ const initWebDAVForm = () => {
         @click="activeTab = 'achievements'"
       >
         🏆 {{ t('admin.achievements') }}
+      </button>
+      
+      <button 
+        class="tab-button" 
+        :class="{ active: activeTab === 'violations' }"
+        @click="activeTab = 'violations'"
+      >
+        ⚠️ {{ t('violations.title') }}
       </button>
       
       <button 
@@ -436,6 +544,144 @@ const initWebDAVForm = () => {
               </div>
             </div>
             <button class="btn btn-danger delete-btn" @click="deleteAchievement(achievement.id)">{{ t('admin.delete') }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" v-if="activeTab === 'violations'">
+      <div class="card form-card">
+        <h2>{{ t('violations.addRule') }}</h2>
+        
+        <div class="form-row">
+          <div class="input-group">
+            <label for="violation-title">{{ t('violations.ruleTitle') }}</label>
+            <input 
+              type="text" 
+              id="violation-title" 
+              v-model="newViolationRule.title" 
+              :placeholder="t('violations.ruleTitle')"
+            />
+          </div>
+          
+          <div class="input-group">
+            <label for="violation-points">{{ t('violations.pointsDeducted') }}</label>
+            <input 
+              type="number" 
+              id="violation-points" 
+              v-model.number="newViolationRule.pointsDeducted" 
+              min="1" 
+              max="1000"
+            />
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label for="violation-description">{{ t('admin.rewardDescription') }}</label>
+          <textarea 
+            id="violation-description" 
+            v-model="newViolationRule.description" 
+            :placeholder="t('admin.rewardDescription')"
+            rows="2"
+          ></textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>{{ t('tasks.taskIcon') }}</label>
+          <div class="icon-picker">
+            <div 
+              v-for="icon in violationIconOptions" 
+              :key="icon" 
+              class="icon-option"
+              :class="{ 'selected': newViolationRule.icon === icon }"
+              @click="newViolationRule.icon = icon"
+            >
+              {{ icon }}
+            </div>
+          </div>
+        </div>
+        
+        <button class="btn btn-primary" @click="addViolationRuleHandler">{{ t('violations.addRule') }}</button>
+      </div>
+      
+      <div class="card form-card">
+        <h2>{{ t('violations.recordViolation') }}</h2>
+        
+        <div class="form-row">
+          <div class="input-group">
+            <label for="select-member">{{ t('violations.selectMember') }}</label>
+            <select id="select-member" v-model="newViolation.memberId">
+              <option value="">{{ t('violations.selectMember') }}</option>
+              <option v-for="member in members.value" :key="member.id" :value="member.id">
+                {{ member.name }}
+              </option>
+            </select>
+          </div>
+          
+          <div class="input-group">
+            <label for="select-rule">{{ t('violations.selectRule') }}</label>
+            <select id="select-rule" v-model="newViolation.ruleId">
+              <option value="">{{ t('violations.selectRule') }}</option>
+              <option v-for="rule in violationRules.value" :key="rule.id" :value="rule.id">
+                {{ rule.icon }} {{ rule.title }} (-{{ rule.pointsDeducted }})
+              </option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label for="violation-note">{{ t('violations.note') }}</label>
+          <textarea 
+            id="violation-note" 
+            v-model="newViolation.note" 
+            :placeholder="t('violations.note')"
+            rows="2"
+          ></textarea>
+        </div>
+        
+        <button class="btn btn-danger" @click="recordViolationHandler">{{ t('violations.record') }}</button>
+      </div>
+      
+      <div class="violations-list">
+        <h2>{{ t('violations.history') }}</h2>
+        
+        <div v-if="violationRules.value.length === 0" class="empty-state">
+          <p>{{ t('violations.noRules') }}</p>
+        </div>
+        
+        <div v-else>
+          <h3>{{ t('violations.rule') }}</h3>
+          <div class="admin-list">
+            <div v-for="rule in violationRules.value" :key="rule.id" class="admin-list-item">
+              <div class="item-icon">{{ rule.icon }}</div>
+              <div class="item-content">
+                <h3>{{ rule.title }}</h3>
+                <p>{{ rule.description }}</p>
+                <div class="item-points">{{ t('violations.deductPoints', { points: rule.pointsDeducted }) }}</div>
+              </div>
+              <button class="btn btn-danger delete-btn" @click="deleteViolationRule(rule.id)">{{ t('violations.delete') }}</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="violations-history" style="margin-top: var(--space-xl);">
+          <h3>{{ t('violations.history') }}</h3>
+          
+          <div v-if="violationRecords.value.length === 0" class="empty-state">
+            <p>{{ t('violations.noRecords') }}</p>
+          </div>
+          
+          <div v-else class="admin-list">
+            <div v-for="record in violationRecords.value" :key="record.id" class="admin-list-item">
+              <div class="item-icon">{{ getRuleIcon(record.ruleId) }}</div>
+              <div class="item-content">
+                <h3>{{ getMemberName(record.memberId) }} - {{ getRuleTitle(record.ruleId) }}</h3>
+                <p v-if="record.note">{{ record.note }}</p>
+                <div class="item-points">{{ t('violations.deductPoints', { points: record.deductedPoints }) }}</div>
+                <div class="item-time">{{ t('violations.time') }}: {{ formatTime(record.createdAt) }}</div>
+              </div>
+              <button class="btn btn-danger delete-btn" @click="deleteViolationRecord(record.id)">{{ t('violations.delete') }}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -744,6 +990,12 @@ const initWebDAVForm = () => {
   font-size: var(--font-size-sm);
   color: var(--gray-600);
   font-weight: 600;
+}
+
+.item-time {
+  font-size: var(--font-size-sm);
+  color: var(--gray-500);
+  margin-top: var(--space-xs);
 }
 
 .delete-btn {
