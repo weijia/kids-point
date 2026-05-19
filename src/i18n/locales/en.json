@@ -266,5 +266,9 @@
     "close": "Close",
     "yes": "Yes",
     "no": "No"
+  },
+  "footer": {
+    "version": "Version",
+    "buildTime": "Build Time"
   }
 }
