@@ -21,7 +21,7 @@
     "vue-router": "^4.3.0",
     "vue3-particles": "^2.12.0",
     "zen-fs-cache": "^1.0.1",
-    "zen-fs-config": "^0.1.1",
+    "zen-fs-config": "^0.1.3",
     "zen-fs-sync": "^0.1.0",
     "zen-fs-webdav": "^0.1.2"
   },
