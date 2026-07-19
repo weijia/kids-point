@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { initConfig, getConfigRepo } from '../services/config'
 
 export type TaskFrequency = 'daily' | 'weekly' | 'once'
 
@@ -14,16 +15,47 @@ export interface Task {
 }
 
 const tasks = ref<Task[]>([])
+let initialized = false
 
-const loadTasks = () => {
-  const savedTasks = localStorage.getItem('kidpoints-tasks')
-  if (savedTasks) {
-    tasks.value = JSON.parse(savedTasks)
+const loadTasks = async () => {
+  const repo = await initConfig()
+  try {
+    const saved = repo.getConfig<Task[]>('/tasks')
+    if (saved && Array.isArray(saved)) {
+      tasks.value = saved
+    }
+  } catch (e) {
+    console.warn('Failed to load tasks from config:', e)
+    const savedTasks = localStorage.getItem('kidpoints-tasks')
+    if (savedTasks) {
+      tasks.value = JSON.parse(savedTasks)
+    }
   }
+  initialized = true
 }
 
 const saveTasks = () => {
-  localStorage.setItem('kidpoints-tasks', JSON.stringify(tasks.value))
+  if (!initialized) return
+  try {
+    const repo = getConfigRepo()
+    repo.setConfig('/tasks', tasks.value)
+  } catch (e) {
+    console.warn('Failed to save tasks to config, falling back to localStorage:', e)
+    localStorage.setItem('kidpoints-tasks', JSON.stringify(tasks.value))
+  }
+}
+
+watch(tasks, () => {
+  saveTasks()
+}, { deep: true })
+
+let loadPromise: Promise<void> | null = null
+
+const ensureLoaded = (): Promise<void> => {
+  if (initialized) return Promise.resolve()
+  if (loadPromise) return loadPromise
+  loadPromise = loadTasks()
+  return loadPromise
 }
 
 export function useTasks() {
@@ -34,7 +66,6 @@ export function useTasks() {
       createdAt: Date.now()
     }
     tasks.value.push(newTask)
-    saveTasks()
     return newTask
   }
 
@@ -42,13 +73,11 @@ export function useTasks() {
     const index = tasks.value.findIndex(t => t.id === id)
     if (index !== -1) {
       tasks.value[index] = { ...tasks.value[index], ...data }
-      saveTasks()
     }
   }
 
   const deleteTask = (id: string) => {
     tasks.value = tasks.value.filter(t => t.id !== id)
-    saveTasks()
   }
 
   const resetDailyTasks = () => {
@@ -86,6 +115,7 @@ export function useTasks() {
     resetWeeklyTasks,
     getTasksByFrequency,
     getTasksForMember,
-    loadTasks
+    loadTasks: ensureLoaded,
+    ensureLoaded
   }
 }

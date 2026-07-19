@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Navbar from './components/layout/Navbar.vue'
 import Footer from './components/layout/Footer.vue'
+import UpdateToast from './components/pwa/UpdateToast.vue'
 import { useMembers } from './stores/members'
 import { useTasks } from './stores/tasks'
 import { useRewards } from './stores/rewards'
@@ -168,6 +169,7 @@ onUnmounted(() => {
       </router-view>
     </main>
     <Footer />
+    <UpdateToast />
   </div>
 </template>
 

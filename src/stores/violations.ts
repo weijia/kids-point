@@ -1,4 +1,5 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { initConfig, getConfigRepo } from '../services/config'
 
 export interface ViolationRule {
   id: string
@@ -20,27 +21,80 @@ export interface ViolationRecord {
 
 const violationRules = ref<ViolationRule[]>([])
 const violationRecords = ref<ViolationRecord[]>([])
+let initialized = false
 
-const loadViolationRules = () => {
-  const saved = localStorage.getItem('kidpoints-violation-rules')
-  if (saved) {
-    violationRules.value = JSON.parse(saved)
+const loadViolationRules = async () => {
+  const repo = await initConfig()
+  try {
+    const saved = repo.getConfig<ViolationRule[]>('/violation-rules')
+    if (saved && Array.isArray(saved)) {
+      violationRules.value = saved
+    }
+  } catch (e) {
+    console.warn('Failed to load violation rules from config:', e)
+    const saved = localStorage.getItem('kidpoints-violation-rules')
+    if (saved) {
+      violationRules.value = JSON.parse(saved)
+    }
   }
 }
 
-const loadViolationRecords = () => {
-  const saved = localStorage.getItem('kidpoints-violation-records')
-  if (saved) {
-    violationRecords.value = JSON.parse(saved)
+const loadViolationRecords = async () => {
+  const repo = await initConfig()
+  try {
+    const saved = repo.getConfig<ViolationRecord[]>('/violation-records')
+    if (saved && Array.isArray(saved)) {
+      violationRecords.value = saved
+    }
+  } catch (e) {
+    console.warn('Failed to load violation records from config:', e)
+    const saved = localStorage.getItem('kidpoints-violation-records')
+    if (saved) {
+      violationRecords.value = JSON.parse(saved)
+    }
   }
 }
 
 const saveViolationRules = () => {
-  localStorage.setItem('kidpoints-violation-rules', JSON.stringify(violationRules.value))
+  if (!initialized) return
+  try {
+    const repo = getConfigRepo()
+    repo.setConfig('/violation-rules', violationRules.value)
+  } catch (e) {
+    console.warn('Failed to save violation rules to config, falling back to localStorage:', e)
+    localStorage.setItem('kidpoints-violation-rules', JSON.stringify(violationRules.value))
+  }
 }
 
 const saveViolationRecords = () => {
-  localStorage.setItem('kidpoints-violation-records', JSON.stringify(violationRecords.value))
+  if (!initialized) return
+  try {
+    const repo = getConfigRepo()
+    repo.setConfig('/violation-records', violationRecords.value)
+  } catch (e) {
+    console.warn('Failed to save violation records to config, falling back to localStorage:', e)
+    localStorage.setItem('kidpoints-violation-records', JSON.stringify(violationRecords.value))
+  }
+}
+
+watch(violationRules, () => {
+  saveViolationRules()
+}, { deep: true })
+
+watch(violationRecords, () => {
+  saveViolationRecords()
+}, { deep: true })
+
+let loadPromise: Promise<void> | null = null
+
+const ensureLoaded = async (): Promise<void> => {
+  if (initialized) return
+  if (loadPromise) return loadPromise
+  loadPromise = (async () => {
+    await Promise.all([loadViolationRules(), loadViolationRecords()])
+    initialized = true
+  })()
+  return loadPromise
 }
 
 export function useViolations() {
@@ -51,7 +105,6 @@ export function useViolations() {
       createdAt: Date.now()
     }
     violationRules.value.push(rule)
-    saveViolationRules()
     return rule
   }
 
@@ -59,13 +112,11 @@ export function useViolations() {
     const index = violationRules.value.findIndex(r => r.id === id)
     if (index !== -1) {
       violationRules.value[index] = { ...violationRules.value[index], ...data }
-      saveViolationRules()
     }
   }
 
   const deleteViolationRule = (id: string) => {
     violationRules.value = violationRules.value.filter(r => r.id !== id)
-    saveViolationRules()
   }
 
   const recordViolation = (ruleId: string, memberId: string, note: string = ''): ViolationRecord | null => {
@@ -81,13 +132,11 @@ export function useViolations() {
       createdAt: Date.now()
     }
     violationRecords.value.push(record)
-    saveViolationRecords()
     return record
   }
 
   const deleteViolationRecord = (id: string) => {
     violationRecords.value = violationRecords.value.filter(r => r.id !== id)
-    saveViolationRecords()
   }
 
   const getViolationsByMember = (memberId: string) => {
@@ -120,7 +169,6 @@ export function useViolations() {
 
   const resetViolationRecords = () => {
     violationRecords.value = []
-    saveViolationRecords()
   }
 
   return {
@@ -136,7 +184,8 @@ export function useViolations() {
     getTotalDeductedPoints,
     getRecentViolations,
     resetViolationRecords,
-    loadViolationRules,
-    loadViolationRecords
+    loadViolationRules: ensureLoaded,
+    loadViolationRecords: ensureLoaded,
+    ensureLoaded
   }
 }

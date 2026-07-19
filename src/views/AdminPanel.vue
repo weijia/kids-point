@@ -8,6 +8,15 @@ import { useAchievements } from '../stores/achievements'
 import { useViolations } from '../stores/violations'
 import { useMembers } from '../stores/members'
 import { databaseService, type SyncStatus } from '../services/database'
+import {
+  getConfigRepoInfo,
+  listConfigEntries,
+  getSyncStatuses,
+  flushSync,
+  listConflicts,
+  type ConfigRepoInfo,
+  type SyncStatusInfo,
+} from '../services/config'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -329,6 +338,135 @@ const initWebDAVForm = () => {
     }
   }
 }
+
+// zen-fs-config 配置管理
+const configRepoInfo = ref<ConfigRepoInfo | null>(null)
+const configEntries = ref<Array<{ path: string; value: unknown }>>([])
+const syncStatuses = ref<SyncStatusInfo[]>([])
+const conflicts = ref<any[]>([])
+const configMessage = ref('')
+const configMessageType = ref<'info' | 'success' | 'error'>('info')
+const configLoading = ref(false)
+const expandedPaths = ref<Set<string>>(new Set())
+const editingPath = ref<string | null>(null)
+const editingValue = ref('')
+
+const togglePath = (path: string) => {
+  if (expandedPaths.value.has(path)) {
+    expandedPaths.value.delete(path)
+  } else {
+    expandedPaths.value.add(path)
+  }
+}
+
+const formatConfigValue = (value: unknown): string => {
+  if (value === null) return 'null'
+  if (value === undefined) return 'undefined'
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const getConfigSize = (value: unknown): string => {
+  try {
+    const json = JSON.stringify(value)
+    const bytes = new Blob([json]).size
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  } catch {
+    return '-'
+  }
+}
+
+const showConfigMessage = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
+  configMessage.value = msg
+  configMessageType.value = type
+  setTimeout(() => {
+    configMessage.value = ''
+  }, 3000)
+}
+
+const loadConfigInfo = async () => {
+  configLoading.value = true
+  try {
+    const [info, entries, statuses, confs] = await Promise.all([
+      getConfigRepoInfo(),
+      listConfigEntries('/'),
+      getSyncStatuses(),
+      listConflicts(),
+    ])
+    configRepoInfo.value = info
+    configEntries.value = entries
+    syncStatuses.value = statuses
+    conflicts.value = confs
+  } catch (e) {
+    showConfigMessage(t('config.loadFailed') + ': ' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const handleFlushSync = async () => {
+  try {
+    configLoading.value = true
+    await flushSync()
+    showConfigMessage(t('config.flushSuccess'), 'success')
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage(t('config.flushFailed') + ': ' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const startEdit = (path: string) => {
+  const entry = configEntries.value.find(e => e.path === path)
+  if (!entry) return
+  editingPath.value = path
+  editingValue.value = formatConfigValue(entry.value)
+}
+
+const cancelEdit = () => {
+  editingPath.value = null
+  editingValue.value = ''
+}
+
+const saveEdit = async () => {
+  if (!editingPath.value) return
+  try {
+    const parsed = JSON.parse(editingValue.value)
+    const { getConfigRepo } = await import('../services/config')
+    getConfigRepo().setConfig(editingPath.value, parsed)
+    showConfigMessage(t('config.saveSuccess'), 'success')
+    cancelEdit()
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage(t('config.saveFailed') + ': ' + (e as Error).message, 'error')
+  }
+}
+
+const deleteConfig = async (path: string) => {
+  const confirmed = confirm(t('config.confirmDelete'))
+  if (!confirmed) return
+  try {
+    const { getConfigRepo } = await import('../services/config')
+    const repo = getConfigRepo()
+    const filePath = `/${repo.appId}${path}.json`
+    await (repo.fs.promises.unlink as any)(filePath)
+    showConfigMessage(t('config.deleteSuccess'), 'success')
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage(t('config.deleteFailed') + ': ' + (e as Error).message, 'error')
+  }
+}
+
+const initConfigForm = () => {
+  loadConfigInfo()
+}
 </script>
 
 <template>
@@ -376,6 +514,14 @@ const initWebDAVForm = () => {
         @click="activeTab = 'settings'"
       >
         ⚙️ {{ t('admin.settings') }}
+      </button>
+      
+      <button 
+        class="tab-button" 
+        :class="{ active: activeTab === 'config' }"
+        @click="activeTab = 'config'; initConfigForm()"
+      >
+        🗂️ {{ t('config.title') }}
       </button>
     </div>
     
@@ -809,6 +955,150 @@ const initWebDAVForm = () => {
         </div>
       </div>
     </div>
+
+    <div class="tab-content" v-if="activeTab === 'config'">
+      <!-- 仓库信息 -->
+      <div class="card config-card">
+        <div class="config-header">
+          <h2>🗂️ {{ t('config.title') }}</h2>
+          <div class="config-actions">
+            <button class="btn btn-secondary" @click="loadConfigInfo" :disabled="configLoading">
+              🔄 {{ t('config.refresh') }}
+            </button>
+            <button class="btn btn-primary" @click="handleFlushSync" :disabled="configLoading">
+              ⚡ {{ t('config.flushSync') }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="configMessage" class="config-message" :class="'msg-' + configMessageType">
+          {{ configMessage }}
+        </div>
+
+        <div v-if="configLoading && !configRepoInfo" class="empty-state">
+          <p>{{ t('config.loading') }}</p>
+        </div>
+
+        <div v-else-if="configRepoInfo" class="config-repo-info">
+          <h3>{{ t('config.repoInfo') }}</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="label">{{ t('config.appId') }}:</span>
+              <span class="value">{{ configRepoInfo.appId }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">{{ t('config.nodeId') }}:</span>
+              <span class="value">{{ configRepoInfo.nodeId || '-' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">{{ t('config.backendType') }}:</span>
+              <span class="value">{{ configRepoInfo.backendType }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">{{ t('config.backendOptions') }}:</span>
+              <span class="value">{{ JSON.stringify(configRepoInfo.backendOptions) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 配置项列表 -->
+      <div class="card config-card">
+        <h3>{{ t('config.entries') }} ({{ configEntries.length }})</h3>
+        
+        <div v-if="configEntries.length === 0" class="empty-state">
+          <p>{{ t('config.noEntries') }}</p>
+        </div>
+
+        <div v-else class="config-list">
+          <div v-for="entry in configEntries" :key="entry.path" class="config-item">
+            <div class="config-item-header" @click="togglePath(entry.path)">
+              <div class="config-item-info">
+                <span class="toggle-icon">{{ expandedPaths.has(entry.path) ? '▼' : '▶' }}</span>
+                <span class="config-path">{{ entry.path }}</span>
+                <span class="config-size">{{ getConfigSize(entry.value) }}</span>
+              </div>
+              <div class="config-item-actions" @click.stop>
+                <button class="btn btn-sm btn-secondary" @click="startEdit(entry.path)">
+                  ✏️ {{ t('config.edit') }}
+                </button>
+                <button class="btn btn-sm btn-danger" @click="deleteConfig(entry.path)">
+                  🗑️ {{ t('config.delete') }}
+                </button>
+              </div>
+            </div>
+            
+            <div v-if="expandedPaths.has(entry.path) && editingPath !== entry.path" class="config-item-value">
+              <pre>{{ formatConfigValue(entry.value) }}</pre>
+            </div>
+
+            <div v-if="editingPath === entry.path" class="config-item-edit">
+              <textarea
+                v-model="editingValue"
+                rows="8"
+                class="config-edit-textarea"
+                :placeholder="t('config.editPlaceholder')"
+              ></textarea>
+              <div class="edit-actions">
+                <button class="btn btn-sm btn-primary" @click="saveEdit">
+                  💾 {{ t('config.save') }}
+                </button>
+                <button class="btn btn-sm btn-secondary" @click="cancelEdit">
+                  ✖️ {{ t('config.cancel') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 同步状态 -->
+      <div class="card config-card">
+        <h3>{{ t('config.syncStatus') }}</h3>
+        
+        <div v-if="syncStatuses.length === 0" class="empty-state">
+          <p>{{ t('config.noSyncStatus') }}</p>
+        </div>
+
+        <div v-else class="sync-status-list">
+          <div v-for="status in syncStatuses" :key="status.path" class="sync-status-item">
+            <span class="sync-path">{{ status.path }}</span>
+            <span class="sync-state" :class="'state-' + status.status.toLowerCase()">
+              {{ status.status }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 冲突列表 -->
+      <div class="card config-card">
+        <h3>{{ t('config.conflicts') }} ({{ conflicts.length }})</h3>
+        
+        <div v-if="conflicts.length === 0" class="empty-state">
+          <p>{{ t('config.noConflicts') }}</p>
+        </div>
+
+        <div v-else class="conflict-list">
+          <div v-for="conflict in conflicts" :key="conflict.conflictId" class="conflict-item">
+            <div class="conflict-header">
+              <span class="conflict-id">{{ conflict.conflictId }}</span>
+              <span class="conflict-path">{{ conflict.path }}</span>
+              <span class="conflict-time">{{ new Date(conflict.timestamp).toLocaleString() }}</span>
+            </div>
+            <div class="conflict-content">
+              <div class="conflict-side">
+                <h4>{{ t('config.source') }} ({{ conflict.sourceAuthor }})</h4>
+                <pre>{{ JSON.stringify(conflict.sourceContent, null, 2) }}</pre>
+              </div>
+              <div class="conflict-side">
+                <h4>{{ t('config.target') }} ({{ conflict.targetAuthor }})</h4>
+                <pre>{{ JSON.stringify(conflict.targetContent, null, 2) }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -835,6 +1125,7 @@ const initWebDAVForm = () => {
 .tab-button {
   padding: var(--space-md) var(--space-lg);
   background-color: var(--gray-100);
+  color: var(--gray-800);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 600;
@@ -844,6 +1135,7 @@ const initWebDAVForm = () => {
 
 .tab-button:hover {
   background-color: var(--gray-200);
+  color: var(--gray-900);
 }
 
 .tab-button.active {
@@ -1079,6 +1371,317 @@ const initWebDAVForm = () => {
   border-top: 1px solid var(--gray-200);
 }
 
+/* zen-fs-config 配置面板样式 */
+.config-card {
+  background-color: var(--white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.config-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.config-message {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  text-align: center;
+}
+
+.msg-info {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.msg-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.msg-error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.config-repo-info {
+  margin-top: var(--space-md);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+}
+
+.info-item .label {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  font-weight: 600;
+}
+
+.info-item .value {
+  font-size: var(--font-size-md);
+  color: var(--gray-900);
+  word-break: break-all;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.config-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.config-item {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.config-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  background-color: var(--gray-100);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.config-item-header:hover {
+  background-color: var(--gray-200);
+}
+
+.config-item-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+.toggle-icon {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  width: 16px;
+}
+
+.config-path {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--gray-900);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-size {
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
+  background-color: var(--gray-200);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.config-item-actions {
+  display: flex;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.config-item-value {
+  padding: var(--space-md);
+  background-color: var(--white);
+  border-top: 1px solid var(--gray-200);
+}
+
+.config-item-value pre {
+  margin: 0;
+  padding: var(--space-md);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--gray-800);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.config-item-edit {
+  padding: var(--space-md);
+  background-color: var(--white);
+  border-top: 1px solid var(--gray-200);
+}
+
+.config-edit-textarea {
+  width: 100%;
+  padding: var(--space-md);
+  border: 2px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--gray-900);
+  background-color: var(--white);
+  resize: vertical;
+  min-height: 150px;
+}
+
+.config-edit-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.edit-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.sync-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.sync-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+}
+
+.sync-path {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--gray-800);
+}
+
+.sync-state {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background-color: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.state-synced {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.state-syncing {
+  background-color: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+.state-error,
+.state-conflict {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.conflict-item {
+  border: 1px solid var(--error-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.conflict-header {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background-color: #f8d7da;
+  color: #721c24;
+  font-size: var(--font-size-sm);
+  flex-wrap: wrap;
+}
+
+.conflict-id {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-weight: 600;
+}
+
+.conflict-path {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  flex: 1;
+}
+
+.conflict-time {
+  font-size: var(--font-size-xs);
+}
+
+.conflict-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+
+.conflict-side h4 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--gray-700);
+}
+
+.conflict-side pre {
+  margin: 0;
+  padding: var(--space-sm);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--font-size-xs);
+  color: var(--gray-800);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.btn-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-xs);
+}
+
 @media (max-width: 768px) {
   .form-row {
     flex-direction: column;
@@ -1097,5 +1700,29 @@ const initWebDAVForm = () => {
   .button-group .btn {
     width: 100%;
   }
+
+  .config-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .config-actions {
+    flex-direction: column;
+  }
+
+  .config-item-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+
+  .config-item-actions {
+    justify-content: flex-end;
+  }
+
+  .conflict-content {
+    grid-template-columns: 1fr;
+  }
 }
+
 </style>

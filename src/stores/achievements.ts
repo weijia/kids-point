@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { initConfig, getConfigRepo } from '../services/config'
 
 export type AchievementRequirementType = 'taskCount' | 'pointsTotal' | 'rewardsRedeemed' | 'custom'
 
@@ -18,16 +19,47 @@ export interface Achievement {
 }
 
 const achievements = ref<Achievement[]>([])
+let initialized = false
 
-const loadAchievements = () => {
-  const savedAchievements = localStorage.getItem('kidpoints-achievements')
-  if (savedAchievements) {
-    achievements.value = JSON.parse(savedAchievements)
+const loadAchievements = async () => {
+  const repo = await initConfig()
+  try {
+    const saved = repo.getConfig<Achievement[]>('/achievements')
+    if (saved && Array.isArray(saved)) {
+      achievements.value = saved
+    }
+  } catch (e) {
+    console.warn('Failed to load achievements from config:', e)
+    const savedAchievements = localStorage.getItem('kidpoints-achievements')
+    if (savedAchievements) {
+      achievements.value = JSON.parse(savedAchievements)
+    }
   }
+  initialized = true
 }
 
 const saveAchievements = () => {
-  localStorage.setItem('kidpoints-achievements', JSON.stringify(achievements.value))
+  if (!initialized) return
+  try {
+    const repo = getConfigRepo()
+    repo.setConfig('/achievements', achievements.value)
+  } catch (e) {
+    console.warn('Failed to save achievements to config, falling back to localStorage:', e)
+    localStorage.setItem('kidpoints-achievements', JSON.stringify(achievements.value))
+  }
+}
+
+watch(achievements, () => {
+  saveAchievements()
+}, { deep: true })
+
+let loadPromise: Promise<void> | null = null
+
+const ensureLoaded = (): Promise<void> => {
+  if (initialized) return Promise.resolve()
+  if (loadPromise) return loadPromise
+  loadPromise = loadAchievements()
+  return loadPromise
 }
 
 export function useAchievements() {
@@ -38,7 +70,6 @@ export function useAchievements() {
       createdAt: Date.now()
     }
     achievements.value.push(newAchievement)
-    saveAchievements()
     return newAchievement
   }
 
@@ -46,13 +77,11 @@ export function useAchievements() {
     const index = achievements.value.findIndex(a => a.id === id)
     if (index !== -1) {
       achievements.value[index] = { ...achievements.value[index], ...data }
-      saveAchievements()
     }
   }
 
   const deleteAchievement = (id: string) => {
     achievements.value = achievements.value.filter(a => a.id !== id)
-    saveAchievements()
   }
 
   return {
@@ -60,6 +89,7 @@ export function useAchievements() {
     addAchievement,
     updateAchievement,
     deleteAchievement,
-    loadAchievements
+    loadAchievements: ensureLoaded,
+    ensureLoaded
   }
 }

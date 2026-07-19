@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import type { SupportedLocale } from '../i18n'
+import { initConfig, getConfigRepo } from '../services/config'
 
 export interface WebDAVSyncConfig {
   url: string
@@ -46,32 +47,61 @@ function getDefaultSettings(): Settings {
 }
 
 const settings = ref<Settings>(getDefaultSettings())
+let initialized = false
 
-const loadSettings = () => {
-  const savedSettings = localStorage.getItem('kidpoints-settings')
-  if (savedSettings) {
-    try {
-      const parsed = JSON.parse(savedSettings)
-      settings.value = { 
-        ...getDefaultSettings(), 
-        ...parsed,
-        locale: parsed.locale || getDefaultLocale()
+const loadSettings = async () => {
+  const repo = await initConfig()
+  try {
+    const saved = repo.getConfig<Partial<Settings>>('/settings')
+    if (saved) {
+      settings.value = {
+        ...getDefaultSettings(),
+        ...saved,
+        locale: (saved.locale as SupportedLocale) || getDefaultLocale()
       }
-    } catch (e) {
-      console.error('Failed to parse settings:', e)
+    }
+  } catch (e) {
+    console.warn('Failed to load settings from config:', e)
+    const savedSettings = localStorage.getItem('kidpoints-settings')
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings)
+        settings.value = { 
+          ...getDefaultSettings(), 
+          ...parsed,
+          locale: parsed.locale || getDefaultLocale()
+        }
+      } catch (err) {
+        console.error('Failed to parse settings from localStorage:', err)
+      }
     }
   }
+  initialized = true
 }
 
 const saveSettings = () => {
-  localStorage.setItem('kidpoints-settings', JSON.stringify(settings.value))
+  if (!initialized) return
+  try {
+    const repo = getConfigRepo()
+    repo.setConfig('/settings', settings.value)
+  } catch (e) {
+    console.warn('Failed to save settings to config, falling back to localStorage:', e)
+    localStorage.setItem('kidpoints-settings', JSON.stringify(settings.value))
+  }
 }
 
 watch(settings, () => {
   saveSettings()
 }, { deep: true })
 
-loadSettings()
+let loadPromise: Promise<void> | null = null
+
+const ensureLoaded = (): Promise<void> => {
+  if (initialized) return Promise.resolve()
+  if (loadPromise) return loadPromise
+  loadPromise = loadSettings()
+  return loadPromise
+}
 
 export function useSettings() {
   const updateSettings = (data: Partial<Settings>) => {
@@ -94,7 +124,17 @@ export function useSettings() {
     settings.value.isAuthenticated = false
   }
 
-  const resetData = () => {
+  const resetData = async () => {
+    const repo = await initConfig()
+    const paths = ['/members', '/tasks', '/rewards', '/achievements', '/violation-rules', '/violation-records']
+    for (const path of paths) {
+      try {
+        repo.setConfig(path, path.includes('violation') ? [] : [])
+      } catch (e) {
+        console.warn(`Failed to reset ${path}:`, e)
+      }
+    }
+    
     localStorage.removeItem('kidpoints-members')
     localStorage.removeItem('kidpoints-tasks')
     localStorage.removeItem('kidpoints-rewards')
@@ -136,10 +176,11 @@ export function useSettings() {
     login,
     logout,
     resetData,
-    loadSettings,
+    loadSettings: ensureLoaded,
     saveSettings,
     configureWebDAV,
     disableWebDAV,
-    setLocale
+    setLocale,
+    ensureLoaded
   }
 }
