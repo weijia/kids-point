@@ -1,7 +1,99 @@
-import { createConfigRepo, registerBackend, type IConfigRepo, type BackendInstance } from 'zen-fs-config'
+import {
+  createConfigRepo,
+  registerBackend,
+  type IConfigRepo,
+  type BackendInstance,
+} from 'zen-fs-config'
 
 let configRepo: IConfigRepo | null = null
 let initPromise: Promise<IConfigRepo> | null = null
+
+/**
+ * 把 @zenfs/dom 的 StoreFS 适配成 zen-fs-config 需要的 BackendInstance。
+ *
+ * StoreFS 只有低级 API（read/write/stat/readdir/mkdir/unlink 等），
+ * 但 BackendInstance 需要 readFile/writeFile/exists 等高级 API。
+ * 这里通过组合低级 API 实现高级语义。
+ */
+function adaptStoreFS(storeFS: any): BackendInstance {
+  return {
+    async readFile(path: string, ...args: any[]): Promise<any> {
+      let stat: any
+      try {
+        stat = await storeFS.stat(path)
+      } catch {
+        const err = new Error(`ENOENT: no such file or directory, open '${path}'`)
+        ;(err as any).code = 'ENOENT'
+        throw err
+      }
+      const size = Number(stat.size) || 0
+      if (size === 0) {
+        const encoding = typeof args[0] === 'string' ? args[0] : args[0]?.encoding
+        return encoding ? '' : new Uint8Array(0)
+      }
+      const buffer = new Uint8Array(size)
+      await storeFS.read(path, buffer, 0, size)
+      const encoding = typeof args[0] === 'string' ? args[0] : args[0]?.encoding
+      if (encoding) {
+        return new TextDecoder(encoding).decode(buffer)
+      }
+      return buffer
+    },
+
+    async writeFile(path: string, data: any, _options?: any): Promise<void> {
+      // 文件不存在则创建
+      try {
+        await storeFS.stat(path)
+      } catch {
+        await storeFS.createFile(path, { mode: 0o666 })
+      }
+      let bytes: Uint8Array
+      if (typeof data === 'string') {
+        bytes = new TextEncoder().encode(data)
+      } else if (data instanceof ArrayBuffer) {
+        bytes = new Uint8Array(data)
+      } else if (ArrayBuffer.isView(data)) {
+        bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      } else {
+        bytes = new Uint8Array(0)
+      }
+      await storeFS.write(path, bytes, 0)
+    },
+
+    async readdir(path: string): Promise<string[]> {
+      return storeFS.readdir(path)
+    },
+
+    async stat(path: string, ..._args: any[]): Promise<any> {
+      return storeFS.stat(path)
+    },
+
+    async exists(path: string): Promise<boolean> {
+      try {
+        await storeFS.stat(path)
+        return true
+      } catch {
+        return false
+      }
+    },
+
+    async mkdir(path: string, options?: any): Promise<any> {
+      return storeFS.mkdir(path, options || { mode: 0o777 })
+    },
+
+    async unlink(path: string): Promise<void> {
+      return storeFS.unlink(path)
+    },
+
+    async rmdir(path: string): Promise<void> {
+      return storeFS.rmdir(path)
+    },
+
+    async rename(oldPath: string, newPath: string): Promise<void> {
+      return storeFS.rename(oldPath, newPath)
+    },
+  }
+}
 
 export async function initConfig(): Promise<IConfigRepo> {
   if (configRepo) {
@@ -18,9 +110,11 @@ export async function initConfig(): Promise<IConfigRepo> {
 
     try {
       const { IndexedDB } = await import('@zenfs/dom')
+      // 注册适配器：把 StoreFS 包装成 BackendInstance
       registerBackend('IndexedDB', async (options) => {
-        const fs = await IndexedDB.create(options as any)
-        return fs as unknown as BackendInstance
+        const storeName = (options?.storeName as string) || 'zen-fs-config'
+        const storeFS = await IndexedDB.create({ storeName })
+        return adaptStoreFS(storeFS)
       })
       backendType = 'IndexedDB'
       backendOptions = { storeName: 'kids-point-config' }
@@ -85,9 +179,7 @@ export async function listConfigEntries(prefix: string = '/'): Promise<Array<{ p
       if (stat && stat.isDirectory()) {
         await visit(fullPath)
       } else if (stat && stat.isFile()) {
-        // 只处理 .json 文件
         if (!name.endsWith('.json')) continue
-        // 转换为配置路径：去掉 /{appId} 前缀和 .json 后缀
         const relativePath = fullPath.replace(`/${appId}`, '').replace(/\.json$/, '')
         try {
           const value = repo.getConfig(relativePath)
@@ -142,7 +234,6 @@ export interface ConfigRepoInfo {
 
 export async function getConfigRepoInfo(): Promise<ConfigRepoInfo> {
   const repo = getConfigRepo()
-  // 通过读取 .meta/backends.json 获取后端信息
   let backendType = 'unknown'
   let backendOptions: Record<string, unknown> = {}
   try {
