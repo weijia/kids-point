@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatVersionFull } from '../../version'
 
 const { t } = useI18n()
 const show = ref(false)
+// 当前新版本将安装的版本信息（从 formatVersionFull() 拿到）
+const newVersionLabel = ref('')
 
 let updateAvailable = false
 let updateInterval: number | null = null
@@ -18,7 +21,8 @@ const handleUpdate = (reg: ServiceWorkerRegistration) => {
       if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
         if (!updateAvailable) {
           updateAvailable = true
-          console.log('[PWA] 新版本可用')
+          newVersionLabel.value = formatVersionFull()
+          console.log('[PWA] 新版本可用:', newVersionLabel.value)
           show.value = true
         }
       }
@@ -78,7 +82,14 @@ onUnmounted(() => {
   <Transition name="toast-slide">
     <div v-if="show" class="update-toast-wrapper">
       <div class="update-toast">
-        <span class="toast-text">{{ t('update.newVersionAvailable') }}</span>
+        <div class="toast-text-wrap">
+          <div class="toast-title">
+            🎉 {{ t('update.newVersionAvailable') }}
+          </div>
+          <div v-if="newVersionLabel" class="toast-version">
+            {{ newVersionLabel }}
+          </div>
+        </div>
         <button class="refresh-btn" @click="handleRefresh">
           <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M21 12a9 9 0 11-3-6.7L21 8" />
@@ -104,28 +115,42 @@ onUnmounted(() => {
 .update-toast {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   background-color: rgba(33, 33, 33, 0.95);
   color: #fff;
-  padding: 12px 16px;
+  padding: 12px 18px;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   pointer-events: auto;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  max-width: 90vw;
+  max-width: 92vw;
 }
 
-.toast-text {
+.toast-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toast-title {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.toast-version {
+  font-size: 12px;
+  opacity: 0.85;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  line-height: 1.3;
 }
 
 .refresh-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background-color: rgba(255, 255, 255, 0.15);
   color: #fff;
   border: none;
@@ -134,6 +159,7 @@ onUnmounted(() => {
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  white-space: nowrap;
 }
 
 .refresh-btn:hover {
@@ -174,6 +200,7 @@ onUnmounted(() => {
   .update-toast {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
 }
 </style>
