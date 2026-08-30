@@ -14,8 +14,18 @@ import {
   getSyncStatuses,
   flushSync,
   listConflicts,
+  readConflictBackup,
+  resolveConflict,
+  getBackends,
+  addBackend,
+  removeBackend,
+  listBackendMetadata,
+  getBackendMetadata,
+  deleteConfigByPath,
   type ConfigRepoInfo,
   type SyncStatusInfo,
+  type BackendDescriptor,
+  type BackendMetadata,
 } from '../services/config'
 
 const { t } = useI18n()
@@ -341,7 +351,7 @@ const initWebDAVForm = () => {
 
 // zen-fs-config 配置管理
 const configRepoInfo = ref<ConfigRepoInfo | null>(null)
-const configEntries = ref<Array<{ path: string; value: unknown }>>([])
+const configEntries = ref<Array<{ path: string; value: unknown; sizeBytes?: number }>>([])
 const syncStatuses = ref<SyncStatusInfo[]>([])
 const conflicts = ref<any[]>([])
 const configMessage = ref('')
@@ -350,6 +360,26 @@ const configLoading = ref(false)
 const expandedPaths = ref<Set<string>>(new Set())
 const editingPath = ref<string | null>(null)
 const editingValue = ref('')
+
+// 后端拓扑管理
+const backends = ref<BackendDescriptor[]>([])
+const backendMetaList = ref<BackendMetadata[]>([])
+const addBackendDialog = ref(false)
+const newBackendId = ref('')
+const newBackendType = ref('WebDAV')
+const newBackendDescription = ref('')
+const newBackendOptions = ref<Record<string, string>>({})
+const newBackendFormFields = ref<any[]>([])
+
+// 冲突查看器
+const conflictViewer = ref<{
+  open: boolean
+  conflictId: string
+  source: string
+  target: string
+  resolved: string
+  merged: string
+} | null>(null)
 
 const togglePath = (path: string) => {
   if (expandedPaths.value.has(path)) {
@@ -382,6 +412,13 @@ const getConfigSize = (value: unknown): string => {
   }
 }
 
+const formatBytes = (bytes: number): string => {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
 const showConfigMessage = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
   configMessage.value = msg
   configMessageType.value = type
@@ -393,16 +430,23 @@ const showConfigMessage = (msg: string, type: 'info' | 'success' | 'error' = 'in
 const loadConfigInfo = async () => {
   configLoading.value = true
   try {
-    const [info, entries, statuses, confs] = await Promise.all([
+    const [info, entries, statuses, confs, bknds, metaList] = await Promise.all([
       getConfigRepoInfo(),
       listConfigEntries('/'),
       getSyncStatuses(),
       listConflicts(),
+      getBackends(),
+      (() => {
+        // initConfig 之后 backend registry 才会填充；如果未初始化这里返回空也可以
+        try { return listBackendMetadata() } catch { return [] }
+      })(),
     ])
     configRepoInfo.value = info
     configEntries.value = entries
     syncStatuses.value = statuses
     conflicts.value = confs
+    backends.value = bknds
+    backendMetaList.value = metaList
   } catch (e) {
     showConfigMessage(t('config.loadFailed') + ': ' + (e as Error).message, 'error')
   } finally {
@@ -453,14 +497,158 @@ const deleteConfig = async (path: string) => {
   const confirmed = confirm(t('config.confirmDelete'))
   if (!confirmed) return
   try {
-    const { getConfigRepo } = await import('../services/config')
-    const repo = getConfigRepo()
-    const filePath = `/${repo.appId}${path}.json`
-    await (repo.fs.promises.unlink as any)(filePath)
+    // 使用 repo.deleteFile → 自动写入墓碑，同步时把删除传播到所有副本
+    await deleteConfigByPath(path)
     showConfigMessage(t('config.deleteSuccess'), 'success')
     await loadConfigInfo()
   } catch (e) {
     showConfigMessage(t('config.deleteFailed') + ': ' + (e as Error).message, 'error')
+  }
+}
+
+// ========== 后端管理 ==========
+
+const openAddBackendDialog = () => {
+  const meta = backendMetaList.value.find(m => m.type === newBackendType.value)
+  if (meta) {
+    newBackendFormFields.value = meta.fields
+    newBackendOptions.value = { ...meta.defaultOptions }
+  } else {
+    newBackendFormFields.value = []
+    newBackendOptions.value = {}
+  }
+  newBackendId.value = ''
+  newBackendDescription.value = ''
+  addBackendDialog.value = true
+}
+
+const onBackendTypeChange = () => {
+  const meta = getBackendMetadata(newBackendType.value)
+  if (meta) {
+    newBackendFormFields.value = meta.fields
+    newBackendOptions.value = { ...meta.defaultOptions }
+  } else {
+    newBackendFormFields.value = []
+    newBackendOptions.value = {}
+  }
+}
+
+const handleAddBackend = async () => {
+  if (!newBackendId.value.trim()) {
+    showConfigMessage('请填写后端 ID', 'error')
+    return
+  }
+  // 校验 required 字段
+  const meta = getBackendMetadata(newBackendType.value)
+  if (meta) {
+    for (const f of meta.fields) {
+      if (f.required && !String(newBackendOptions.value[f.key] ?? '').trim()) {
+        showConfigMessage(`必填字段缺失：${f.label}`, 'error')
+        return
+      }
+    }
+  }
+  try {
+    configLoading.value = true
+    await addBackend(
+      newBackendId.value.trim(),
+      newBackendType.value,
+      { ...newBackendOptions.value },
+      newBackendDescription.value.trim() || undefined,
+    )
+    showConfigMessage('后端已添加并建立同步', 'success')
+    addBackendDialog.value = false
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage('添加后端失败：' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const handleRemoveBackend = async (id: string) => {
+  if (id === 'local-idb') {
+    showConfigMessage('本地 IndexedDB 主后端不可删除', 'error')
+    return
+  }
+  const confirmed = confirm(`确定要移除后端 "${id}" 吗？\n此操作仅解除同步关系，不会删除本地 IndexedDB 中的数据。`)
+  if (!confirmed) return
+  try {
+    configLoading.value = true
+    await removeBackend(id)
+    showConfigMessage('后端已移除', 'success')
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage('移除后端失败：' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
+  }
+}
+
+// ========== 冲突处理 ==========
+
+/**
+ * 从 ConflictArchive.sourceBackupPath 推导冲突 ID（meta.json 路径）
+ *   例：.meta/.conflicts/1700000000_settings.conflict/source.json
+ *   →   .meta/.conflicts/1700000000_settings.conflict/meta.json
+ */
+const deriveConflictId = (archive: any): string => {
+  const backupPath: string = archive.sourceBackupPath || archive.targetBackupPath || ''
+  if (!backupPath) return ''
+  const dir = backupPath.split('/').slice(0, -1).join('/')
+  return dir + '/meta.json'
+}
+
+const openConflictViewer = async (archive: any) => {
+  const cid = deriveConflictId(archive)
+  if (!cid) {
+    showConfigMessage('无法定位冲突备份文件', 'error')
+    return
+  }
+  try {
+    configLoading.value = true
+    const [source, target, resolved] = await Promise.all([
+      readConflictBackup(cid, 'source').catch(() => ''),
+      readConflictBackup(cid, 'target').catch(() => ''),
+      readConflictBackup(cid, 'resolved').catch(() => ''),
+    ])
+    conflictViewer.value = {
+      open: true,
+      conflictId: cid,
+      source,
+      target,
+      resolved,
+      merged: resolved || source,
+    }
+  } catch (e) {
+    showConfigMessage('读取冲突备份失败：' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const closeConflictViewer = () => {
+  conflictViewer.value = null
+}
+
+const handleResolveConflict = async () => {
+  if (!conflictViewer.value) return
+  try {
+    configLoading.value = true
+    let merged: unknown = conflictViewer.value.merged
+    try {
+      merged = JSON.parse(conflictViewer.value.merged)
+    } catch {
+      /* 非 JSON 内容直接作为字符串 */
+    }
+    await resolveConflict(conflictViewer.value.conflictId, merged)
+    showConfigMessage('冲突已解决', 'success')
+    closeConflictViewer()
+    await loadConfigInfo()
+  } catch (e) {
+    showConfigMessage('解决冲突失败：' + (e as Error).message, 'error')
+  } finally {
+    configLoading.value = false
   }
 }
 
@@ -991,12 +1179,79 @@ const initConfigForm = () => {
               <span class="value">{{ configRepoInfo.nodeId || '-' }}</span>
             </div>
             <div class="info-item">
-              <span class="label">{{ t('config.backendType') }}:</span>
-              <span class="value">{{ configRepoInfo.backendType }}</span>
+              <span class="label">IndexedDB Store:</span>
+              <span class="value">{{ configRepoInfo.idbStoreName }}</span>
             </div>
             <div class="info-item">
-              <span class="label">{{ t('config.backendOptions') }}:</span>
-              <span class="value">{{ JSON.stringify(configRepoInfo.backendOptions) }}</span>
+              <span class="label">副本后端数量:</span>
+              <span class="value">{{ configRepoInfo.replicaCount }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">同步组类型:</span>
+              <span class="value">{{ configRepoInfo.groupType || '(未设置)' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 后端拓扑 -->
+      <div class="card config-card">
+        <div class="config-header" style="margin-bottom: var(--space-md)">
+          <h3>🔗 后端拓扑 ({{ backends.length + 1 }})</h3>
+          <div class="config-actions">
+            <button class="btn btn-primary btn-sm" @click="openAddBackendDialog" :disabled="configLoading">
+              ➕ 添加后端
+            </button>
+          </div>
+        </div>
+
+        <!-- 本地 IDB 主后端 -->
+        <div class="backend-item backend-primary">
+          <div class="backend-icon">💾</div>
+          <div class="backend-main">
+            <div class="backend-title">
+              <strong>local-idb</strong>
+              <span class="backend-badge badge-primary">主后端</span>
+              <span class="backend-type">IndexedDB (内置)</span>
+            </div>
+            <div class="backend-desc">浏览器本地 IndexedDB，离线优先，所有写入先持久化到这里。</div>
+          </div>
+          <div class="backend-actions">
+            <button class="btn btn-sm btn-secondary" disabled>不可删除</button>
+          </div>
+        </div>
+
+        <div v-if="backends.length === 0" class="empty-state" style="margin-top: var(--space-md)">
+          <p>暂未添加副本后端。点击"添加后端"可配置 WebDAV 等远程双向同步。</p>
+        </div>
+
+        <div v-else class="backend-list">
+          <div v-for="bk in backends" :key="bk.id" class="backend-item">
+            <div class="backend-icon">
+              {{ (getBackendMetadata(bk.type)?.icon) || '📦' }}
+            </div>
+            <div class="backend-main">
+              <div class="backend-title">
+                <strong>{{ bk.id }}</strong>
+                <span class="backend-badge badge-replica">副本</span>
+                <span class="backend-type">{{ bk.type }}</span>
+              </div>
+              <div v-if="bk.description" class="backend-desc">{{ bk.description }}</div>
+              <div class="backend-options">
+                <template v-for="(v, k) in bk.options" :key="k">
+                  <span class="opt-k">{{ k }}:</span>
+                  <span class="opt-v">{{
+                    String(k).toLowerCase().includes('password') || String(k).toLowerCase().includes('token')
+                      ? (v ? '••••••' : '(空)')
+                      : (String(v).length > 80 ? String(v).slice(0, 80) + '…' : String(v))
+                  }}</span>
+                </template>
+              </div>
+            </div>
+            <div class="backend-actions">
+              <button class="btn btn-sm btn-danger" @click="handleRemoveBackend(bk.id)" :disabled="configLoading">
+                ✖️ 移除
+              </button>
             </div>
           </div>
         </div>
@@ -1005,7 +1260,7 @@ const initConfigForm = () => {
       <!-- 配置项列表 -->
       <div class="card config-card">
         <h3>{{ t('config.entries') }} ({{ configEntries.length }})</h3>
-        
+
         <div v-if="configEntries.length === 0" class="empty-state">
           <p>{{ t('config.noEntries') }}</p>
         </div>
@@ -1016,7 +1271,9 @@ const initConfigForm = () => {
               <div class="config-item-info">
                 <span class="toggle-icon">{{ expandedPaths.has(entry.path) ? '▼' : '▶' }}</span>
                 <span class="config-path">{{ entry.path }}</span>
-                <span class="config-size">{{ getConfigSize(entry.value) }}</span>
+                <span class="config-size">
+                  {{ entry.sizeBytes ? formatBytes(entry.sizeBytes) : getConfigSize(entry.value) }}
+                </span>
               </div>
               <div class="config-item-actions" @click.stop>
                 <button class="btn btn-sm btn-secondary" @click="startEdit(entry.path)">
@@ -1027,7 +1284,7 @@ const initConfigForm = () => {
                 </button>
               </div>
             </div>
-            
+
             <div v-if="expandedPaths.has(entry.path) && editingPath !== entry.path" class="config-item-value">
               <pre>{{ formatConfigValue(entry.value) }}</pre>
             </div>
@@ -1055,7 +1312,7 @@ const initConfigForm = () => {
       <!-- 同步状态 -->
       <div class="card config-card">
         <h3>{{ t('config.syncStatus') }}</h3>
-        
+
         <div v-if="syncStatuses.length === 0" class="empty-state">
           <p>{{ t('config.noSyncStatus') }}</p>
         </div>
@@ -1073,28 +1330,123 @@ const initConfigForm = () => {
       <!-- 冲突列表 -->
       <div class="card config-card">
         <h3>{{ t('config.conflicts') }} ({{ conflicts.length }})</h3>
-        
+
         <div v-if="conflicts.length === 0" class="empty-state">
           <p>{{ t('config.noConflicts') }}</p>
         </div>
 
         <div v-else class="conflict-list">
-          <div v-for="conflict in conflicts" :key="conflict.conflictId" class="conflict-item">
+          <div
+            v-for="(conflict, idx) in conflicts"
+            :key="(conflict.conflictPath || 'conflict') + '-' + idx"
+            class="conflict-item"
+          >
             <div class="conflict-header">
-              <span class="conflict-id">{{ conflict.conflictId }}</span>
-              <span class="conflict-path">{{ conflict.path }}</span>
+              <span class="conflict-id">#{{ idx + 1 }}</span>
+              <span class="conflict-path">{{ conflict.conflictPath }}</span>
               <span class="conflict-time">{{ new Date(conflict.timestamp).toLocaleString() }}</span>
             </div>
-            <div class="conflict-content">
-              <div class="conflict-side">
-                <h4>{{ t('config.source') }} ({{ conflict.sourceAuthor }})</h4>
-                <pre>{{ JSON.stringify(conflict.sourceContent, null, 2) }}</pre>
+            <div class="conflict-meta">
+              <span>源: {{ conflict.sourceAuthor }} (v{{ conflict.sourceVersion }})</span>
+              <span>目标: {{ conflict.targetAuthor }} (v{{ conflict.targetVersion }})</span>
+              <span v-if="conflict.resolvedStrategy">自动策略: {{ conflict.resolvedStrategy }}</span>
+            </div>
+            <div style="padding: var(--space-md)">
+              <button class="btn btn-sm btn-primary" @click="openConflictViewer(conflict)">
+                👁 查看并解决
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加后端对话框 -->
+      <div v-if="addBackendDialog" class="modal-overlay" @click.self="addBackendDialog = false">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3>➕ 添加同步后端</h3>
+            <button class="btn btn-sm btn-secondary" @click="addBackendDialog = false">✖️</button>
+          </div>
+          <div class="modal-body">
+            <div class="input-group">
+              <label>后端 ID <span style="color: var(--error)">*</span></label>
+              <input
+                type="text"
+                v-model="newBackendId"
+                placeholder="例如 webdav-nextcloud（唯一标识）"
+              />
+            </div>
+            <div class="input-group">
+              <label>后端类型</label>
+              <select v-model="newBackendType" @change="onBackendTypeChange">
+                <option v-for="m in backendMetaList" :key="m.type" :value="m.type">
+                  {{ m.icon }} {{ m.label }} ({{ m.type }})
+                </option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>描述</label>
+              <input type="text" v-model="newBackendDescription" placeholder="可选，例如「家里面的 NextCloud」" />
+            </div>
+
+            <div v-for="f in newBackendFormFields" :key="f.key" class="input-group">
+              <label>
+                {{ f.label }}
+                <span v-if="f.required" style="color: var(--error)">*</span>
+              </label>
+              <input
+                :type="f.type === 'password' ? 'password' : f.type === 'select' ? 'text' : 'text'"
+                v-model="newBackendOptions[f.key]"
+                :placeholder="f.placeholder || ''"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="addBackendDialog = false">取消</button>
+            <button class="btn btn-primary" @click="handleAddBackend" :disabled="configLoading">
+              添加后端
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 冲突查看/解决对话框 -->
+      <div v-if="conflictViewer?.open" class="modal-overlay" @click.self="closeConflictViewer">
+        <div class="modal-dialog modal-wide">
+          <div class="modal-header">
+            <h3>⚔️ 冲突处理</h3>
+            <button class="btn btn-sm btn-secondary" @click="closeConflictViewer">✖️</button>
+          </div>
+          <div class="modal-body">
+            <div class="conflict-view-grid">
+              <div class="conflict-view-side">
+                <h4>源端 (source)</h4>
+                <pre class="conflict-view-pre">{{ conflictViewer.source || '(空)' }}</pre>
               </div>
-              <div class="conflict-side">
-                <h4>{{ t('config.target') }} ({{ conflict.targetAuthor }})</h4>
-                <pre>{{ JSON.stringify(conflict.targetContent, null, 2) }}</pre>
+              <div class="conflict-view-side">
+                <h4>目标端 (target)</h4>
+                <pre class="conflict-view-pre">{{ conflictViewer.target || '(空)' }}</pre>
+              </div>
+              <div v-if="conflictViewer.resolved" class="conflict-view-side">
+                <h4>已自动解决 (resolved)</h4>
+                <pre class="conflict-view-pre">{{ conflictViewer.resolved }}</pre>
               </div>
             </div>
+            <div class="input-group" style="margin-top: var(--space-lg)">
+              <label>合并结果（编辑后提交作为最终版本）</label>
+              <textarea
+                rows="10"
+                v-model="conflictViewer.merged"
+                class="config-edit-textarea"
+                style="width: 100%"
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeConflictViewer">取消</button>
+            <button class="btn btn-primary" @click="handleResolveConflict" :disabled="configLoading">
+              ✅ 以此合并结果解决
+            </button>
           </div>
         </div>
       </div>
@@ -1723,6 +2075,222 @@ const initConfigForm = () => {
   .conflict-content {
     grid-template-columns: 1fr;
   }
+
+  .backend-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .backend-actions {
+    align-self: flex-start;
+  }
+
+  .conflict-view-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-dialog {
+    max-width: 100%;
+    margin: 10px;
+  }
+
+  .modal-wide {
+    max-width: 100%;
+  }
+}
+
+/* ========== 后端拓扑样式 ========== */
+.backend-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.backend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background-color: var(--gray-50, #f9fafb);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+}
+
+.backend-primary {
+  background-color: #e0f2fe;
+  border-color: #7dd3fc;
+  margin-bottom: var(--space-md);
+}
+
+.backend-icon {
+  font-size: 28px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--white);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.backend-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.backend-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.backend-type {
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.backend-badge {
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.badge-primary {
+  background-color: var(--primary);
+  color: var(--white);
+}
+
+.badge-replica {
+  background-color: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.backend-desc {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  margin-top: 2px;
+}
+
+.backend-options {
+  margin-top: var(--space-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  font-size: var(--font-size-xs);
+}
+
+.backend-options .opt-k {
+  color: var(--gray-500);
+  font-weight: 600;
+}
+
+.backend-options .opt-v {
+  color: var(--gray-700);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.backend-actions {
+  flex-shrink: 0;
+}
+
+/* ========== Modal 对话框样式 ========== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-md);
+}
+
+.modal-dialog {
+  background-color: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-wide {
+  max-width: 960px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--gray-800);
+}
+
+.modal-body {
+  padding: var(--space-xl);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-xl);
+  border-top: 1px solid var(--gray-200);
+  background-color: var(--gray-50, #f9fafb);
+}
+
+/* ========== 冲突查看器样式 ========== */
+.conflict-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  background-color: var(--white);
+}
+
+.conflict-view-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.conflict-view-side h4 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-sm);
+  color: var(--gray-700);
+}
+
+.conflict-view-pre {
+  margin: 0;
+  padding: var(--space-sm);
+  background-color: var(--gray-100);
+  border-radius: var(--radius-md);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: var(--font-size-xs);
+  color: var(--gray-800);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--gray-200);
 }
 
 </style>

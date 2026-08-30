@@ -1,100 +1,203 @@
+/**
+ * zen-fs-config 初始化模板
+ * --------------------------
+ * 参考 my-skills/zen-fs-config/skill.md
+ *
+ * 设计原则：
+ *  - IndexedDB 始终是本地主后端（offline-first），所有读写直接操作 IndexedDB
+ *  - 远程后端（WebDAV / Gitee / S3 等）是副本，通过 addBackend() 添加后自动双向同步
+ *  - 重新打开应用只需传入 appId，IndexedDB + .meta/backends/ 包含所有状态
+ *  - 业务数据配置保存在 /kids-point/ 下的 JSON 文件中，通过 setConfig / getConfig 操作
+ */
+
 import {
   createConfigRepo,
   registerBackend,
+  getBackendMetadata as _getBackendMetadata,
+  listBackendMetadata as _listBackendMetadata,
   type IConfigRepo,
   type BackendInstance,
+  type ConflictArchive,
+  type BackendDescriptor,
+  type BackendsMeta,
+  type BackendMetadata,
 } from 'zen-fs-config'
+
+const APP_ID = 'kids-point'
+const IDB_STORE_NAME = 'kids-point-config'
 
 let configRepo: IConfigRepo | null = null
 let initPromise: Promise<IConfigRepo> | null = null
 
-/**
- * 把 @zenfs/dom 的 IndexedDB 文件系统适配成 zen-fs-config 需要的 BackendInstance。
- *
- * zen-fs-config 0.1.3 已修复 InMemory 后端的适配（使用 configureSingle + fs.promises），
- * 但没有内置 IndexedDB 后端。这里用同样的方式包装 @zenfs/dom 的 IndexedDB。
- */
-async function createIndexedDBBackend(options: Record<string, unknown>): Promise<BackendInstance> {
-  const { IndexedDB } = await import('@zenfs/dom')
-  const { configureSingle, fs } = await import('@zenfs/core')
-  const storeName = (options.storeName as string) || 'zen-fs-config'
-  await configureSingle({ backend: IndexedDB, storeName })
-  const pfs = fs.promises
+// ===========================================================================
+// 一、注册自定义后端类型（必须在 createConfigRepo 之前调用）
+// ===========================================================================
 
-  return {
-    async readFile(path: string, ...args: any[]): Promise<any> {
-      if (args.length > 0) {
-        return (pfs as any).readFile(path, ...args)
+/**
+ * 注册 WebDAV 后端。
+ *
+ * zen-fs-webdav 的 WebDAVFileSystem 方法签名与 zen-fs-config 需要的
+ * BackendInstance 略有差异（readDir vs readdir / deleteFile vs unlink），
+ * 这里做一层浅适配。
+ */
+function registerWebDAVBackend(): void {
+  registerBackend(
+    'WebDAV',
+    async (options: Record<string, unknown>): Promise<BackendInstance> => {
+      const { createWebDAVFileSystem } = await import('zen-fs-webdav')
+      const webdav = createWebDAVFileSystem({
+        baseUrl: options.baseUrl as string,
+        username: options.username as string | undefined,
+        password: options.password as string | undefined,
+        token: options.token as string | undefined,
+        timeout: typeof options.timeout === 'number' ? options.timeout : undefined,
+        headers: typeof options.headers === 'object' ? (options.headers as Record<string, string>) : undefined,
+      })
+
+      // 把各种 data 转换成 WebDAV writeFile 接受的类型
+      const normalizeWriteData = (data: unknown): string | Uint8Array => {
+        if (typeof data === 'string') return data
+        if (data instanceof Uint8Array) return data
+        if (data instanceof ArrayBuffer) return new Uint8Array(data)
+        if (ArrayBuffer.isView(data)) {
+          return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        }
+        return JSON.stringify(data)
       }
-      return (pfs as any).readFile(path)
-    },
-    async writeFile(path: string, data: any, options2?: any): Promise<void> {
-      return (pfs as any).writeFile(path, data, options2)
-    },
-    async readdir(path: string): Promise<string[]> {
-      const entries = await (pfs as any).readdir(path)
-      return entries.map((e: any) => (typeof e === 'string' ? e : e.name))
-    },
-    async stat(path: string, ...args: any[]): Promise<any> {
-      return (pfs as any).stat(path, ...args)
-    },
-    async exists(path: string): Promise<boolean> {
-      try {
-        await (pfs as any).stat(path)
-        return true
-      } catch {
-        return false
+
+      return {
+        async readFile(path: string, ...args: any[]): Promise<any> {
+          const encoding = typeof args[0] === 'string' ? args[0] : args[0]?.encoding
+          const opts: any = encoding ? { encoding } : {}
+          const result = await webdav.readFile(path, opts)
+          // Buffer 在浏览器里不存在，zen-fs-webdav 在浏览器环境下返回的其实是 Uint8Array/string
+          if (encoding && typeof result !== 'string') {
+            return new TextDecoder(encoding).decode(result as Uint8Array)
+          }
+          return result
+        },
+
+        async writeFile(path: string, data: any, _options?: any): Promise<void> {
+          await webdav.writeFile(path, normalizeWriteData(data) as any)
+        },
+
+        async readdir(path: string): Promise<string[]> {
+          const entries = await webdav.readDir(path)
+          return entries.map((e: any) => (typeof e === 'string' ? e : e.name))
+        },
+
+        async stat(path: string, ..._args: any[]): Promise<any> {
+          return webdav.stat(path)
+        },
+
+        async exists(path: string): Promise<boolean> {
+          return webdav.exists(path)
+        },
+
+        async mkdir(path: string, _options?: any): Promise<any> {
+          return webdav.mkdir(path)
+        },
+
+        async unlink(path: string): Promise<void> {
+          // WebDAVFileSystem 有 unlink(path) 和 deleteFile(path)，优先 deleteFile
+          try {
+            await webdav.unlink(path)
+          } catch {
+            await webdav.deleteFile(path)
+          }
+        },
+
+        async rmdir(path: string): Promise<void> {
+          await webdav.rmdir(path, { recursive: true })
+        },
+
+        async rename(oldPath: string, newPath: string): Promise<void> {
+          await webdav.move(oldPath, newPath, true)
+        },
       }
     },
-    async mkdir(path: string, options2?: any): Promise<any> {
-      return (pfs as any).mkdir(path, options2)
+    // BackendMetadata：用于 AdminPanel 动态表单生成
+    {
+      type: 'WebDAV',
+      label: 'WebDAV',
+      icon: '🌐',
+      accountFields: ['username', 'password', 'token'],
+      fields: [
+        {
+          key: 'baseUrl',
+          label: '服务器地址',
+          type: 'text',
+          placeholder: 'https://dav.example.com/remote.php/dav/files/user/',
+          required: true,
+        },
+        {
+          key: 'username',
+          label: '用户名',
+          type: 'text',
+          placeholder: '可选',
+          required: false,
+        },
+        {
+          key: 'password',
+          label: '密码',
+          type: 'password',
+          placeholder: '可选，或使用 Token',
+          required: false,
+        },
+        {
+          key: 'token',
+          label: 'Token',
+          type: 'password',
+          placeholder: '可选，优先于密码',
+          required: false,
+        },
+      ],
+      defaultOptions: {
+        baseUrl: '',
+        username: '',
+        password: '',
+        token: '',
+      },
     },
-    async unlink(path: string): Promise<void> {
-      return (pfs as any).unlink(path)
-    },
-    async rmdir(path: string): Promise<void> {
-      return (pfs as any).rmdir(path)
-    },
-    async rename(oldPath: string, newPath: string): Promise<void> {
-      return (pfs as any).rename(oldPath, newPath)
-    },
-  }
+  )
 }
+
+// 注册其他后端类型（以后新增 Gitee / S3 可以在这里继续 registerBackend）
+function registerAllBackends(): void {
+  registerWebDAVBackend()
+}
+
+// ===========================================================================
+// 二、初始化 ConfigRepo
+// ===========================================================================
 
 export async function initConfig(): Promise<IConfigRepo> {
   if (configRepo) {
     return configRepo
   }
-
   if (initPromise) {
     return initPromise
   }
 
   initPromise = (async () => {
-    let backendType = 'InMemory'
-    let backendOptions: Record<string, unknown> = { label: 'kids-point-config' }
+    // 1. 注册所有自定义后端（必须在 createConfigRepo 之前）
+    registerAllBackends()
 
-    try {
-      registerBackend('IndexedDB', createIndexedDBBackend)
-      backendType = 'IndexedDB'
-      backendOptions = { storeName: 'kids-point-config' }
-    } catch (e) {
-      console.warn('IndexedDB backend not available, falling back to InMemory:', e)
-    }
-
-    const repo = await createConfigRepo('kids-point', {
-      primaryBackendId: 'local',
-      backendInfo: {
-        type: backendType,
-        options: backendOptions,
-      },
-      cache: {
-        storeType: 'MemoryCacheStore',
-        ttlMs: 60_000,
-      },
+    // 2. 零参数初始化（offline-first）：
+    //    - 自动创建 IndexedDB 主后端（storeName: kids-point-config）
+    //    - 自动 load() 缓存，读取已有的副本后端 .meta/backends/*.json
+    //    - 自动建立已注册副本后端的双向同步
+    const repo = await createConfigRepo(APP_ID, {
+      idbStoreName: IDB_STORE_NAME,
+      // 默认用 IdbCacheStore：缓存副本后端的响应 + revision，跨 reload 持续
+      cache: { storeType: 'IdbCacheStore', storePrefix: 'zen-fs-config:' },
+      // 30 分钟轮询一次远程副本（用户可手动 flush 立即同步）
+      syncPollIntervalMs: 30 * 60 * 1000,
     })
 
-    await (repo as any).load()
+    // 3. 标记为 config-sync 组（业务程序的"配置同步"，不是 data-sync）
+    await repo.ensureGroupType('config-sync')
+
     configRepo = repo
     return repo
   })()
@@ -109,21 +212,35 @@ export function getConfigRepo(): IConfigRepo {
   return configRepo
 }
 
-export async function withConfig<T>(fn: (repo: IConfigRepo) => T): Promise<T> {
+export async function withConfig<T>(fn: (repo: IConfigRepo) => Promise<T> | T): Promise<T> {
   const repo = await initConfig()
   return fn(repo)
 }
 
-/** 列出指定目录下的所有配置项（带值） */
-export async function listConfigEntries(prefix: string = '/'): Promise<Array<{ path: string; value: unknown }>> {
+// ===========================================================================
+// 三、管理辅助 API（给 AdminPanel 使用）
+// ===========================================================================
+
+/** 配置项条目（用在 UI 列表里） */
+export interface ConfigEntry {
+  /** 逻辑路径（例如 /settings，自动去掉 /{appId} 前缀和 .json 后缀） */
+  path: string
+  /** 实际文件字节数（近似，version 文件不计） */
+  sizeBytes: number
+  /** 解析出来的配置值（读取失败时为 null） */
+  value: unknown
+}
+
+/** 递归列出所有配置文件 */
+export async function listConfigEntries(prefix: string = '/'): Promise<ConfigEntry[]> {
   const repo = getConfigRepo()
-  const result: Array<{ path: string; value: unknown }> = []
   const appId = repo.appId
+  const result: ConfigEntry[] = []
 
   const visit = async (dir: string) => {
     let entries: string[] = []
     try {
-      entries = await (repo.fs.promises.readdir as any)(dir)
+      entries = await (repo.rootFS.promises.readdir as any)(dir)
     } catch {
       return
     }
@@ -132,26 +249,31 @@ export async function listConfigEntries(prefix: string = '/'): Promise<Array<{ p
       const fullPath = dir.endsWith('/') ? dir + name : dir + '/' + name
       let stat: any
       try {
-        stat = await (repo.fs.promises.stat as any)(fullPath)
+        stat = await (repo.rootFS.promises.stat as any)(fullPath)
       } catch {
         continue
       }
-      if (stat && stat.isDirectory()) {
+      if (stat && typeof stat.isDirectory === 'function' ? stat.isDirectory() : stat.type === 'dir') {
         await visit(fullPath)
-      } else if (stat && stat.isFile()) {
+      } else if (stat && typeof stat.isFile === 'function' ? stat.isFile() : stat.type === 'file') {
         if (!name.endsWith('.json')) continue
         const relativePath = fullPath.replace(`/${appId}`, '').replace(/\.json$/, '')
+        const sizeBytes = Number(stat.size) || 0
+        let value: unknown = null
         try {
-          const value = repo.getConfig(relativePath)
-          result.push({ path: relativePath, value })
+          value = repo.getConfig(relativePath)
         } catch {
-          // 忽略读取失败的项
+          /* ignore */
         }
+        result.push({ path: relativePath, sizeBytes, value })
       }
     }
   }
 
-  await visit(`/${appId}${prefix.endsWith('/') ? prefix.slice(0, -1) : prefix}`)
+  const basePrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix
+  await visit(`/${appId}${basePrefix}`)
+  // shared 目录也一并扫出来（如果有）
+  await visit(`/shared${basePrefix}`)
   return result
 }
 
@@ -162,22 +284,27 @@ export interface SyncStatusInfo {
 
 export async function getSyncStatuses(): Promise<SyncStatusInfo[]> {
   const repo = getConfigRepo()
-  const statuses = repo.getSyncStatuses()
-  const result: SyncStatusInfo[] = []
-  for (const [path, status] of statuses.entries()) {
-    result.push({ path, status: String(status) })
+  const map = repo.getSyncStatuses()
+  const arr: SyncStatusInfo[] = []
+  for (const [path, status] of map.entries()) {
+    arr.push({ path, status: String(status) })
   }
-  return result
+  return arr
 }
 
-export async function flushSync(): Promise<void> {
+export async function flushSync() {
   const repo = getConfigRepo()
-  await repo.flush()
+  return repo.flush()
 }
 
-export async function listConflicts() {
+export async function listConflicts(): Promise<ConflictArchive[]> {
   const repo = getConfigRepo()
   return repo.listConflicts()
+}
+
+export async function readConflictBackup(conflictId: string, side: 'source' | 'target' | 'resolved'): Promise<string> {
+  const repo = getConfigRepo()
+  return repo.readConflictBackup(conflictId, side)
 }
 
 export async function resolveConflict(conflictId: string, mergedContent: unknown): Promise<void> {
@@ -188,29 +315,64 @@ export async function resolveConflict(conflictId: string, mergedContent: unknown
 export interface ConfigRepoInfo {
   appId: string
   nodeId: string
-  backendType: string
-  backendOptions: Record<string, unknown>
+  replicaCount: number
+  idbStoreName: string
+  groupType: string | null
 }
 
 export async function getConfigRepoInfo(): Promise<ConfigRepoInfo> {
   const repo = getConfigRepo()
-  let backendType = 'unknown'
-  let backendOptions: Record<string, unknown> = {}
+  let groupType: string | null = null
   try {
-    const raw = await (repo.fs.promises.readFile as any)('/.meta/backends.json', 'utf-8')
-    const meta = JSON.parse(raw as string)
-    if (meta && Array.isArray(meta.backends) && meta.backends.length > 0) {
-      const primary = meta.backends[0]
-      backendType = primary.type || 'unknown'
-      backendOptions = primary.options || {}
-    }
+    groupType = await repo.getGroupType()
   } catch {
-    // ignore
+    /* ignore */
   }
   return {
     appId: repo.appId,
     nodeId: repo.nodeId,
-    backendType,
-    backendOptions,
+    replicaCount: (repo as any).replicaCount ?? 0,
+    idbStoreName: IDB_STORE_NAME,
+    groupType,
   }
 }
+
+// Re-export backend-metadata helpers (registered during initConfig)
+export function getBackendMetadata(type: string): BackendMetadata | undefined {
+  return _getBackendMetadata(type)
+}
+
+export function listBackendMetadata(): BackendMetadata[] {
+  return _listBackendMetadata()
+}
+
+// Backend topology management (uses repo methods backed by .meta/backends/*.json)
+export async function getBackends(): Promise<BackendDescriptor[]> {
+  const repo = getConfigRepo()
+  const meta = await repo.getBackends()
+  if (!meta) return []
+  return meta.backends
+}
+
+export async function addBackend(
+  id: string,
+  type: string,
+  options: Record<string, unknown>,
+  description?: string,
+): Promise<void> {
+  const repo = getConfigRepo()
+  await repo.addBackend(id, type, options, description)
+}
+
+export async function removeBackend(id: string): Promise<void> {
+  const repo = getConfigRepo()
+  await repo.removeBackend(id)
+}
+
+/** Delete a config entry by logical path (writes tombstone for sync). */
+export async function deleteConfigByPath(configPath: string): Promise<void> {
+  const repo = getConfigRepo()
+  await repo.deleteFile(configPath)
+}
+
+export type { BackendDescriptor, BackendsMeta, BackendMetadata }
