@@ -370,6 +370,10 @@ const newBackendType = ref('WebDAV')
 const newBackendDescription = ref('')
 const newBackendOptions = ref<Record<string, string>>({})
 const newBackendFormFields = ref<any[]>([])
+// 粘贴 JSON 导入（字符串形式的配置导入/导出）
+const pasteJsonExpanded = ref(false)
+const pasteJsonText = ref('')
+const pasteJsonError = ref('')
 
 // 冲突查看器
 const conflictViewer = ref<{
@@ -519,7 +523,207 @@ const openAddBackendDialog = () => {
   }
   newBackendId.value = ''
   newBackendDescription.value = ''
+  pasteJsonExpanded.value = false
+  pasteJsonText.value = ''
+  pasteJsonError.value = ''
   addBackendDialog.value = true
+}
+
+/**
+ * 把一个已存在的后端配置序列化成 JSON 字符串并复制到剪贴板。
+ * 这就是「字符串形式的配置导出」：方便在不同设备/用户之间迁移后端配置，
+ * 配合下面的 parsePasteConfigToForm 直接粘贴即可还原。
+ *
+ * accountFields 中声明的敏感字段（token/password 等）不会脱敏，
+ * 因为用户可能就是要完整迁移；但控制台和消息里会提醒"包含密钥，请妥善保管"。
+ */
+const copyBackendAsJson = async (bk: BackendDescriptor) => {
+  const payload: Record<string, unknown> = {
+    id: bk.id,
+    type: bk.type,
+    options: bk.options,
+  }
+  if (bk.description) payload.description = bk.description
+  const json = JSON.stringify(payload, null, 2)
+  try {
+    await navigator.clipboard.writeText(json)
+    const meta = getBackendMetadata(bk.type)
+    const sensitive = meta?.accountFields ?? []
+    const hasSecrets = sensitive.length > 0 && Object.keys(bk.options as object).some(k => sensitive.includes(k))
+    showConfigMessage(
+      `后端 ${bk.id} 的 JSON 配置已复制到剪贴板${hasSecrets ? '（包含 token/密码等敏感字段，请注意妥善保管）' : ''}`,
+      'success',
+    )
+  } catch (e) {
+    showConfigMessage('复制失败：' + (e as Error).message, 'error')
+  }
+}
+
+/**
+ * 把后端配置序列化成「紧凑单字符串」格式并复制到剪贴板。
+ * 格式：Type:id:k1=v1,k2=v2,k3=v3,...
+ * 这是用户其他地方正在使用的后端配置字符串格式（例如 RemoteStorage 部署配置）。
+ *
+ * 转义规则：如果 value 中含有 `,` 或 `=`，会分别替换为 URL 编码 %2C / %3D ，
+ * 并在 parsePasteConfigToForm 中解码还原，避免分割歧义。
+ */
+const copyBackendAsCompactString = async (bk: BackendDescriptor) => {
+  const opts = bk.options as Record<string, unknown>
+  const pairs = Object.entries(opts)
+    .filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+    .map(([k, v]) => {
+      let value = String(v)
+      // 紧凑格式下 value 不能裸含 , 或 =，编码之
+      value = value.replace(/=/g, '%3D').replace(/,/g, '%2C')
+      return `${k}=${value}`
+    })
+    .join(',')
+  const compact = `${bk.type}:${bk.id}:${pairs}`
+  try {
+    await navigator.clipboard.writeText(compact)
+    const meta = getBackendMetadata(bk.type)
+    const sensitive = meta?.accountFields ?? []
+    const hasSecrets = sensitive.length > 0 && Object.keys(bk.options as object).some(k => sensitive.includes(k))
+    showConfigMessage(
+      `后端 ${bk.id} 的紧凑配置字符串已复制（Type:id:k=v,...）${hasSecrets ? '（含敏感字段，妥善保管）' : ''}`,
+      'success',
+    )
+  } catch (e) {
+    showConfigMessage('复制失败：' + (e as Error).message, 'error')
+  }
+}
+
+/**
+ * 解析「紧凑单字符串」配置。
+ * 格式：  Type:id:k1=v1,k2=v2,k3=v3
+ * 例：    RemoteStorage:remotestorage-1784761846529:href=https://storage.5apps.com/weijia/,token=xxx,basePath=/app_data/configs
+ *
+ * 规则：
+ *   - 用前两个 `:` 切三段：[type, id, options-string]
+ *     如果 id 段里用户写了 options-string 里的 key=value（比如省略了 id），
+ *     我们兜底：第三段不存在时用第二段作为 options，id 给默认值。
+ *   - options-string 按 /(\w+)=(.*?)(?=,\w+=|$)/g 贪婪匹配 key=value 对，
+ *     避免 value 内部含逗号造成歧义；同时还原 %2C / %3D 编码。
+ */
+const parseCompactBackendString = (raw: string) => {
+  const trimmed = raw.trim()
+  if (!trimmed) return { error: '字符串为空' }
+  const firstColon = trimmed.indexOf(':')
+  if (firstColon < 0) return { error: '紧凑格式必须以 Type:id: 开头，例如 RemoteStorage:my-rs:href=...,token=...' }
+  const type = trimmed.slice(0, firstColon).trim()
+  const rest = trimmed.slice(firstColon + 1)
+  const secondColon = rest.indexOf(':')
+  let id = ''
+  let kvPart = ''
+  if (secondColon < 0) {
+    // 兜底：没有第二冒号时，把 rest 当作 options（id 让用户之后补）
+    kvPart = rest
+  } else {
+    id = rest.slice(0, secondColon).trim()
+    kvPart = rest.slice(secondColon + 1)
+  }
+  if (!type) return { error: '缺少 type（第一段，冒号分隔之前）' }
+  // options 匹配：用前瞻正则，确保 value 中若出现逗号不被误切
+  const options: Record<string, string> = {}
+  const re = /([A-Za-z_][\w-]*)=(.*?)(?=,[A-Za-z_][\w-]*=|$)/g
+  let m: RegExpExecArray | null
+  let foundAny = false
+  while ((m = re.exec(kvPart)) !== null) {
+    foundAny = true
+    const k = m[1]
+    let v = m[2]
+    // 还原编码
+    try {
+      v = decodeURIComponent(v)
+    } catch {
+      // 有非法 % 编码时保持原样
+    }
+    options[k] = v
+  }
+  if (!foundAny && kvPart.trim()) {
+    return { error: `options 部分无法解析（应为 key=value,key=value 形式），当前内容：${kvPart}` }
+  }
+  return { type, id, options }
+}
+
+/**
+ * 解析粘贴的配置字符串并填充到「添加后端」表单。
+ * **双格式自动识别**：
+ *   - 去除首尾空白后以 `{` 或 `[` 开头 → 按 JSON 对象解析
+ *     格式：{ "id":"...", "type":"...", "options":{...}, "description":"..." }
+ *   - 否则 → 按紧凑字符串解析
+ *     格式：Type:id:k1=v1,k2=v2,...
+ * 两种格式共用后续校验：type 必须已注册；options 必须为对象。
+ */
+const parsePasteConfigToForm = () => {
+  pasteJsonError.value = ''
+  const raw = pasteJsonText.value
+  if (!raw.trim()) {
+    pasteJsonError.value = '请先粘贴配置字符串（JSON 或 Type:id:k=v,... 格式）'
+    return
+  }
+  const trimmed = raw.trim()
+  let type: string
+  let id: string
+  let options: Record<string, unknown>
+  let description = ''
+  let formatLabel = '紧凑字符串'
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    formatLabel = 'JSON'
+    let parsed: any
+    try {
+      parsed = JSON.parse(raw)
+    } catch (e) {
+      pasteJsonError.value = 'JSON 解析失败：' + (e as Error).message
+      return
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      pasteJsonError.value = 'JSON 必须是对象 { id, type, options, ... }'
+      return
+    }
+    if (!parsed.type || typeof parsed.type !== 'string') {
+      pasteJsonError.value = '缺少必填字段：type（后端类型，例如 WebDAV/Gitee/RemoteStorage）'
+      return
+    }
+    if (!parsed.options || typeof parsed.options !== 'object' || Array.isArray(parsed.options)) {
+      pasteJsonError.value = '缺少必填字段：options（object，包含连接参数）'
+      return
+    }
+    type = parsed.type
+    id = String(parsed.id ?? '').trim()
+    description = String(parsed.description ?? '').trim()
+    options = parsed.options as Record<string, unknown>
+  } else {
+    const compact = parseCompactBackendString(raw)
+    if ('error' in compact) {
+      pasteJsonError.value = compact.error as string
+      return
+    }
+    type = compact.type
+    id = compact.id
+    options = compact.options as Record<string, unknown>
+    description = ''
+  }
+
+  const meta = getBackendMetadata(type)
+  if (!meta) {
+    const known = backendMetaList.value.map(m => m.type).join(' / ')
+    pasteJsonError.value = `未知后端类型 "${type}"，已注册类型：${known || '(无)'}`
+    return
+  }
+  // 全部校验通过，填充表单
+  newBackendType.value = type
+  newBackendId.value = id
+  newBackendDescription.value = description
+  onBackendTypeChange() // 先按 type 初始化 defaultOptions + fields
+  // 再用粘贴进来的 options 覆盖（值全部强制转字符串对应 text/password input）
+  for (const [k, v] of Object.entries(options)) {
+    newBackendOptions.value[k] = v === null || v === undefined ? '' : String(v)
+  }
+  pasteJsonExpanded.value = false
+  pasteJsonError.value = ''
+  showConfigMessage(`已从 ${formatLabel} 解析填充 ${meta.label} 后端，请确认字段后点击"添加后端"`, 'success')
 }
 
 const onBackendTypeChange = () => {
@@ -1249,6 +1453,12 @@ const initConfigForm = () => {
               </div>
             </div>
             <div class="backend-actions">
+              <button class="btn btn-sm btn-secondary" @click="copyBackendAsJson(bk)" :disabled="configLoading" title="复制为 JSON 格式（含 description）">
+                📋 复制JSON
+              </button>
+              <button class="btn btn-sm btn-secondary" @click="copyBackendAsCompactString(bk)" :disabled="configLoading" title="复制为 Type:id:k=v,... 紧凑字符串（用于别处粘贴导入）">
+                🔤 复制紧凑
+              </button>
               <button class="btn btn-sm btn-danger" @click="handleRemoveBackend(bk.id)" :disabled="configLoading">
                 ✖️ 移除
               </button>
@@ -1368,6 +1578,29 @@ const initConfigForm = () => {
             <button class="btn btn-sm btn-secondary" @click="addBackendDialog = false">✖️</button>
           </div>
           <div class="modal-body">
+            <!-- 字符串形式的配置导入：粘贴 JSON 或紧凑字符串，自动识别并填充表单 -->
+            <details class="paste-json-box" :open="pasteJsonExpanded" @toggle="pasteJsonExpanded = ($event.target as HTMLDetailsElement).open">
+              <summary class="paste-json-summary">📝 粘贴配置字符串导入后端（JSON / 紧凑格式，可替代逐字段填写）</summary>
+              <textarea
+                class="paste-json-textarea"
+                v-model="pasteJsonText"
+                rows="7"
+                placeholder="示例1（紧凑 Type:id:k=v,...）：RemoteStorage:remotestorage-1784761846529:href=https://storage.5apps.com/weijia/,token=xxx,basePath=/app_data/configs&#10;示例2（JSON 对象）：{ &quot;id&quot;: &quot;my-rs&quot;, &quot;type&quot;: &quot;RemoteStorage&quot;, &quot;options&quot;: { &quot;href&quot;: &quot;...&quot;, &quot;token&quot;: &quot;...&quot; }, &quot;description&quot;: &quot;公司 RS&quot; }"
+              ></textarea>
+              <p class="paste-json-hint">
+                <strong>两种格式自动识别：</strong><br/>
+                ① 紧凑格式：<code>Type:id:k1=v1,k2=v2,...</code>（不含 description，适合在脚本/命令行里粘贴）<br/>
+                ② JSON 格式：<code>{ id?, type, options, description? }</code>（字段完整，支持 description）<br/>
+                type 必须是已注册的后端类型：
+                <span v-for="(m, i) in backendMetaList" :key="m.type"><code>{{ m.type }}</code><span v-if="i < backendMetaList.length - 1">、</span></span>
+              </p>
+              <div v-if="pasteJsonError" class="inline-error">⚠️ {{ pasteJsonError }}</div>
+              <div class="paste-json-actions">
+                <button class="btn btn-sm btn-secondary" @click="pasteJsonText = ''; pasteJsonError = ''" :disabled="!pasteJsonText && !pasteJsonError">清空</button>
+                <button class="btn btn-sm btn-primary" @click="parsePasteConfigToForm">🔍 解析并填充到表单</button>
+              </div>
+            </details>
+
             <div class="input-group">
               <label>后端 ID <span style="color: var(--error)">*</span></label>
               <input
@@ -2244,6 +2477,78 @@ const initConfigForm = () => {
   padding: var(--space-xl);
   overflow-y: auto;
   flex: 1;
+}
+
+/* ---------- 粘贴 JSON 导入（字符串形式的配置导入/导出） ---------- */
+.paste-json-box {
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-lg);
+  background-color: var(--gray-50, #f9fafb);
+}
+.paste-json-box[open] {
+  background-color: var(--white);
+  border-style: solid;
+  border-color: var(--primary-200, #bfdbfe);
+}
+.paste-json-summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--gray-800);
+  padding: var(--space-xs) 0;
+  user-select: none;
+}
+.paste-json-summary:hover {
+  color: var(--primary-700, #1d4ed8);
+}
+.paste-json-textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin: var(--space-sm) 0 var(--space-xs);
+  background-color: var(--white);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.paste-json-textarea:focus {
+  outline: none;
+  border-color: var(--primary-500, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.paste-json-hint {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--gray-600);
+  line-height: 1.6;
+}
+.paste-json-hint code {
+  background-color: var(--gray-100);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: var(--gray-800);
+}
+.paste-json-actions {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+  margin-top: var(--space-xs);
+}
+.inline-error {
+  padding: var(--space-xs) var(--space-sm);
+  margin: var(--space-xs) 0 var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--error, #b91c1c);
+  background-color: var(--error-50, #fef2f2);
+  border-left: 3px solid var(--error, #ef4444);
+  border-radius: var(--radius-sm);
 }
 
 .modal-footer {
