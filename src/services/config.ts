@@ -15,6 +15,7 @@ import {
   registerBackend,
   getBackendMetadata as _getBackendMetadata,
   listBackendMetadata as _listBackendMetadata,
+  wrapZenFSFileSystem,
   type IConfigRepo,
   type BackendInstance,
   type ConflictArchive,
@@ -45,12 +46,13 @@ function registerWebDAVBackend(): void {
     'WebDAV',
     async (options: Record<string, unknown>): Promise<BackendInstance> => {
       const { createWebDAVFileSystem } = await import('zen-fs-webdav')
+      const tNum = Number(options.timeout)
       const webdav = createWebDAVFileSystem({
         baseUrl: options.baseUrl as string,
         username: options.username as string | undefined,
         password: options.password as string | undefined,
         token: options.token as string | undefined,
-        timeout: typeof options.timeout === 'number' ? options.timeout : undefined,
+        timeout: Number.isFinite(tNum) && tNum > 0 ? tNum : undefined,
         headers: typeof options.headers === 'object' ? (options.headers as Record<string, string>) : undefined,
       })
 
@@ -162,9 +164,236 @@ function registerWebDAVBackend(): void {
   )
 }
 
-// 注册其他后端类型（以后新增 Gitee / S3 可以在这里继续 registerBackend）
+// 注册其他后端类型（以后新增 S3 可以在这里继续 registerBackend）
+function registerGiteeBackend(): void {
+  registerBackend(
+    'Gitee',
+    async (options: Record<string, unknown>): Promise<BackendInstance> => {
+      const { default: Gitee } = await import('zen-fs-gitee')
+      // 通过 wrapZenFSFileSystem 调用 resolveMountConfig + 自动 ready，
+      // 把 ZenFS Backend<GiteeFS, GiteeOptions> 转换成 BackendInstance。
+      return wrapZenFSFileSystem({
+        backend: Gitee,
+        token: options.token as string,
+        owner: options.owner as string,
+        repo: options.repo as string,
+        branch: (options.branch as string) || 'master',
+        baseUrl: options.baseUrl as string | undefined,
+        disableAsyncCache: typeof options.disableAsyncCache === 'boolean' ? options.disableAsyncCache : false,
+      } as any)
+    },
+    {
+      type: 'Gitee',
+      label: 'Gitee 仓库',
+      icon: '🐙',
+      accountFields: ['token'],
+      fields: [
+        {
+          key: 'token',
+          label: '个人访问令牌 (PAT)',
+          type: 'password',
+          placeholder: 'https://gitee.com/profile/personal_access_tokens 申请',
+          required: true,
+        },
+        {
+          key: 'owner',
+          label: '仓库所有者 (用户名/组织)',
+          type: 'text',
+          placeholder: '例如 weijia',
+          required: true,
+        },
+        {
+          key: 'repo',
+          label: '仓库名称',
+          type: 'text',
+          placeholder: '例如 my-data',
+          required: true,
+        },
+        {
+          key: 'branch',
+          label: '分支',
+          type: 'text',
+          placeholder: '默认 master',
+          required: false,
+        },
+        {
+          key: 'baseUrl',
+          label: '自定义 API 地址',
+          type: 'text',
+          placeholder: '默认 https://gitee.com/api/v5',
+          required: false,
+        },
+      ],
+      defaultOptions: {
+        token: '',
+        owner: '',
+        repo: '',
+        branch: 'master',
+        baseUrl: 'https://gitee.com/api/v5',
+      },
+    },
+  )
+}
+
+/**
+ * 注册 RemoteStorage.js 后端。
+ *
+ * RemoteStorageFileSystem extends @zenfs/core FileSystem，方法名与 zen-fs
+ * 一致但 readFile 返回 Uint8Array / stat 返回 InodeLike，这里做一层
+ * BackendInstance 浅适配。
+ */
+function registerRemoteStorageBackend(): void {
+  registerBackend(
+    'RemoteStorage',
+    async (options: Record<string, unknown>): Promise<BackendInstance> => {
+      const { createRemoteStorageFileSystem } = await import('zen-fs-remotestoragejs')
+      const timeoutNum = Number(options.timeout)
+      const rs = createRemoteStorageFileSystem({
+        href: options.href as string,
+        token: options.token as string,
+        basePath: options.basePath as string | undefined,
+        headers: typeof options.headers === 'object' ? (options.headers as Record<string, string>) : undefined,
+        timeout: Number.isFinite(timeoutNum) && timeoutNum > 0 ? timeoutNum : undefined,
+        preciseMtime: typeof options.preciseMtime === 'boolean' ? options.preciseMtime : undefined,
+        persistCache: typeof options.persistCache === 'boolean' ? options.persistCache : undefined,
+        syncRootPath: options.syncRootPath as string | undefined,
+      })
+
+      const normalizeWriteData = (data: unknown): string | Uint8Array => {
+        if (typeof data === 'string') return data
+        if (data instanceof Uint8Array) return data
+        if (data instanceof ArrayBuffer) return new Uint8Array(data)
+        if (ArrayBuffer.isView(data)) {
+          return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+        }
+        return JSON.stringify(data)
+      }
+
+      // RemoteStorageFile readFile -> Uint8Array；BackendInstance 读 text 时需要转 string
+      const readFileAsText = (bytes: Uint8Array, encoding?: string): string => {
+        if (encoding && encoding.toLowerCase() === 'utf-16le') {
+          return new TextDecoder(encoding as any).decode(bytes)
+        }
+        // 默认 utf-8
+        return new TextDecoder().decode(bytes)
+      }
+
+      return {
+        async readFile(path: string, ...args: any[]): Promise<any> {
+          const encoding = typeof args[0] === 'string' ? args[0] : args[0]?.encoding
+          const bytes = await rs.readFile(path)
+          if (encoding) {
+            return readFileAsText(bytes, encoding)
+          }
+          return bytes
+        },
+
+        async writeFile(path: string, data: any, _options?: any): Promise<void> {
+          await rs.writeFile(path, normalizeWriteData(data))
+        },
+
+        async readdir(path: string): Promise<string[]> {
+          return rs.readdir(path)
+        },
+
+        async stat(path: string, ..._args: any[]): Promise<any> {
+          return rs.stat(path)
+        },
+
+        async exists(path: string): Promise<boolean> {
+          return rs.exists(path)
+        },
+
+        async mkdir(path: string, _options?: any): Promise<any> {
+          return rs.mkdir(path)
+        },
+
+        async unlink(path: string): Promise<void> {
+          await rs.unlink(path)
+        },
+
+        async rmdir(path: string): Promise<void> {
+          await rs.rmdir(path)
+        },
+
+        async rename(oldPath: string, newPath: string): Promise<void> {
+          await rs.rename(oldPath, newPath)
+        },
+
+        async getRevision(path: string): Promise<string | number | undefined> {
+          try {
+            return rs.getRevision(path)
+          } catch {
+            return undefined
+          }
+        },
+
+        async dispose(): Promise<void> {
+          try {
+            await rs.disconnect()
+          } catch {
+            /* noop */
+          }
+        },
+      }
+    },
+    {
+      type: 'RemoteStorage',
+      label: 'RemoteStorage.js',
+      icon: '📡',
+      accountFields: ['token'],
+      fields: [
+        {
+          key: 'href',
+          label: 'Storage 端点 URL',
+          type: 'text',
+          placeholder: 'https://5apps.com/storage/username/ 或自托管实例',
+          required: true,
+        },
+        {
+          key: 'token',
+          label: 'Bearer Token',
+          type: 'password',
+          placeholder: '通过 WebOAuth / claimAccess 拿到的模块级 token',
+          required: true,
+        },
+        {
+          key: 'basePath',
+          label: '基础路径',
+          type: 'text',
+          placeholder: '例如 /app_data/ 或 /public/',
+          required: false,
+        },
+        {
+          key: 'syncRootPath',
+          label: '同步基线路径',
+          type: 'text',
+          placeholder: '默认 basePath 为空时用 app_data/，避免 401',
+          required: false,
+        },
+        {
+          key: 'timeout',
+          label: '请求超时 (ms)',
+          type: 'text',
+          placeholder: '默认 30000',
+          required: false,
+        },
+      ],
+      defaultOptions: {
+        href: '',
+        token: '',
+        basePath: '',
+        syncRootPath: '',
+        timeout: '30000',
+      },
+    },
+  )
+}
+
 function registerAllBackends(): void {
   registerWebDAVBackend()
+  registerGiteeBackend()
+  registerRemoteStorageBackend()
 }
 
 // ===========================================================================
