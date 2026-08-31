@@ -1528,10 +1528,19 @@ const initConfigForm = () => {
         </div>
 
         <div v-else class="sync-status-list">
-          <div v-for="status in syncStatuses" :key="status.path" class="sync-status-item">
-            <span class="sync-path">{{ status.path }}</span>
-            <span class="sync-state" :class="'state-' + status.status.toLowerCase()">
-              {{ status.status }}
+          <div v-for="st in syncStatuses" :key="st.path" class="sync-status-item">
+            <div class="sync-info">
+              <span class="sync-path">{{ st.path }}</span>
+              <span v-if="st.sourceName || st.targetName" class="sync-pair">
+                {{ st.sourceName || '?' }} → {{ st.targetName || '?' }}
+              </span>
+              <span class="sync-meta">
+                共 {{ st.totalSyncs }} 次
+                <span v-if="st.lastCheckTime">· 最近 {{ new Date(st.lastCheckTime).toLocaleString('zh-CN') }}</span>
+              </span>
+            </div>
+            <span class="sync-state" :class="'state-' + st.state.toLowerCase()">
+              {{ st.state }}
             </span>
           </div>
         </div>
@@ -2161,9 +2170,28 @@ const initConfigForm = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
   padding: var(--space-md);
   background-color: var(--gray-100);
   border-radius: var(--radius-md);
+}
+
+.sync-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sync-pair {
+  font-size: var(--font-size-xs);
+  color: var(--gray-600);
+}
+
+.sync-meta {
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
 }
 
 .sync-path {
@@ -2186,7 +2214,8 @@ const initConfigForm = () => {
   color: #155724;
 }
 
-.state-syncing {
+.state-syncing,
+.state-watching {
   background-color: var(--primary-light);
   color: var(--primary-dark);
 }
@@ -2195,6 +2224,17 @@ const initConfigForm = () => {
 .state-conflict {
   background-color: #f8d7da;
   color: #721c24;
+}
+
+.state-idle,
+.state-paused {
+  background-color: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.state-disposed {
+  background-color: #e2e3e5;
+  color: #6c757d;
 }
 
 .conflict-list {

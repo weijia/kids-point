@@ -508,15 +508,34 @@ export async function listConfigEntries(prefix: string = '/'): Promise<ConfigEnt
 
 export interface SyncStatusInfo {
   path: string
-  status: string
+  /** 同步对状态：idle / syncing / watching / paused / disposed */
+  state: string
+  /** 源后端名（如 'local-idb'） */
+  sourceName?: string
+  /** 目标后端名（如 'Gitee(my-repo)'） */
+  targetName?: string
+  /** 是否正在 watch 监听 */
+  watching: boolean
+  /** 累计同步次数 */
+  totalSyncs: number
+  /** 最近一次同步检查时间（ms 时间戳，可能为空） */
+  lastCheckTime?: number
 }
 
 export async function getSyncStatuses(): Promise<SyncStatusInfo[]> {
   const repo = getConfigRepo()
   const map = repo.getSyncStatuses()
   const arr: SyncStatusInfo[] = []
-  for (const [path, status] of map.entries()) {
-    arr.push({ path, status: String(status) })
+  for (const [path, st] of map.entries()) {
+    arr.push({
+      path,
+      state: String(st.state ?? 'idle'),
+      sourceName: st.sourceName,
+      targetName: st.targetName,
+      watching: !!st.watching,
+      totalSyncs: Number(st.totalSyncs) || 0,
+      lastCheckTime: st.lastCheckTime,
+    })
   }
   return arr
 }
