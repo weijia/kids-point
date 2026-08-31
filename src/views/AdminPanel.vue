@@ -2512,10 +2512,14 @@ const initConfigForm = () => {
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-sm);
   line-height: 1.5;
-  margin: var(--space-sm) 0 var(--space-xs);
+  color: var(--gray-800);
   background-color: var(--white);
   box-sizing: border-box;
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+.paste-json-textarea::placeholder {
+  color: var(--gray-400);
+  opacity: 1;
 }
 .paste-json-textarea:focus {
   outline: none;
