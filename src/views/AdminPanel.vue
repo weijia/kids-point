@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { SyncGroupConfiguratorCore, type CoreEventMap } from 'zen-fs-config-ui'
@@ -208,7 +208,7 @@ const initSyncPanel = () => {
 
 onMounted(() => {
   databaseService.onStatusChange((status) => { syncStatus.value = status })
-  if (activeTab.value === 'sync') initSyncPanel()
+  if (activeTab.value === 'sync') void nextTick(initSyncPanel)
 })
 
 onBeforeUnmount(() => {
@@ -218,7 +218,8 @@ onBeforeUnmount(() => {
 
 const switchTab = (tab: string) => {
   activeTab.value = tab
-  if (tab === 'sync') initSyncPanel()
+  // 等待 v-if 渲染出 configuratorHost 后再挂载 Core，否则 host 为 null 直接 return
+  if (tab === 'sync') void nextTick(initSyncPanel)
 }
 </script>
 
