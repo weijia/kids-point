@@ -1,14 +1,6 @@
 import { ref, watch } from 'vue'
 import type { SupportedLocale } from '../i18n'
-import { initConfig, getConfigRepo } from '../services/config'
-
-export interface WebDAVSyncConfig {
-  url: string
-  username: string
-  password: string
-  enabled: boolean
-  lastSyncTime: number | null
-}
+import { loadDoc, saveDoc } from '../services/doc-store'
 
 export interface Settings {
   adminPassword: string | null
@@ -17,7 +9,6 @@ export interface Settings {
   lastWeeklyReset: number
   notificationsEnabled: boolean
   theme: 'light' | 'dark'
-  webdavSync: WebDAVSyncConfig | null
   locale: SupportedLocale
 }
 
@@ -27,9 +18,7 @@ function getDefaultLocale(): SupportedLocale {
     return savedLocale
   }
   const browserLang = navigator.language.toLowerCase()
-  if (browserLang.startsWith('zh')) {
-    return 'zh'
-  }
+  if (browserLang.startsWith('zh')) return 'zh'
   return 'en'
 }
 
@@ -41,7 +30,6 @@ function getDefaultSettings(): Settings {
     lastWeeklyReset: Date.now(),
     notificationsEnabled: true,
     theme: 'light',
-    webdavSync: null,
     locale: getDefaultLocale()
   }
 }
@@ -50,48 +38,25 @@ const settings = ref<Settings>(getDefaultSettings())
 let initialized = false
 
 const loadSettings = async () => {
-  const repo = await initConfig()
   try {
-    const saved = repo.getConfig<Partial<Settings>>('/settings')
+    const saved = await loadDoc<Partial<Settings>>('settings')
     if (saved) {
       settings.value = {
         ...getDefaultSettings(),
         ...saved,
+        // 登录态不跨设备同步，始终从登出状态开始
+        isAuthenticated: false,
         locale: (saved.locale as SupportedLocale) || getDefaultLocale()
       }
     }
   } catch (e) {
-    console.warn('Failed to load settings from config:', e)
-    const savedSettings = localStorage.getItem('kidpoints-settings')
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings)
-        settings.value = { 
-          ...getDefaultSettings(), 
-          ...parsed,
-          locale: parsed.locale || getDefaultLocale()
-        }
-      } catch (err) {
-        console.error('Failed to parse settings from localStorage:', err)
-      }
-    }
+    console.warn('Failed to load settings from PouchDB:', e)
   }
   initialized = true
 }
 
-const saveSettings = () => {
-  if (!initialized) return
-  try {
-    const repo = getConfigRepo()
-    repo.setConfig('/settings', settings.value)
-  } catch (e) {
-    console.warn('Failed to save settings to config, falling back to localStorage:', e)
-    localStorage.setItem('kidpoints-settings', JSON.stringify(settings.value))
-  }
-}
-
 watch(settings, () => {
-  saveSettings()
+  if (initialized) void saveDoc('settings', settings.value)
 }, { deep: true })
 
 let loadPromise: Promise<void> | null = null
@@ -125,39 +90,20 @@ export function useSettings() {
   }
 
   const resetData = async () => {
-    const repo = await initConfig()
-    const paths = ['/members', '/tasks', '/rewards', '/achievements', '/violation-rules', '/violation-records']
+    const paths = ['members', 'tasks', 'rewards', 'achievements', 'violation-rules', 'violation-records', 'current-member']
     for (const path of paths) {
       try {
-        repo.setConfig(path, path.includes('violation') ? [] : [])
+        await saveDoc(path, [])
       } catch (e) {
         console.warn(`Failed to reset ${path}:`, e)
       }
     }
-    
-    localStorage.removeItem('kidpoints-members')
-    localStorage.removeItem('kidpoints-tasks')
-    localStorage.removeItem('kidpoints-rewards')
-    localStorage.removeItem('kidpoints-achievements')
-    
     const currentPassword = settings.value.adminPassword
-    const webdavSync = settings.value.webdavSync
     const locale = settings.value.locale
-    settings.value = { 
+    settings.value = {
       ...getDefaultSettings(),
       adminPassword: currentPassword,
-      webdavSync,
       locale
-    }
-  }
-
-  const configureWebDAV = (config: WebDAVSyncConfig) => {
-    settings.value.webdavSync = config
-  }
-
-  const disableWebDAV = () => {
-    if (settings.value.webdavSync) {
-      settings.value.webdavSync.enabled = false
     }
   }
 
@@ -168,8 +114,8 @@ export function useSettings() {
 
   return {
     settings: settings.value,
-    get isAuthenticated() { 
-      return settings.value.isAuthenticated 
+    get isAuthenticated() {
+      return settings.value.isAuthenticated
     },
     updateSettings,
     setAdminPassword,
@@ -177,10 +123,7 @@ export function useSettings() {
     logout,
     resetData,
     loadSettings: ensureLoaded,
-    saveSettings,
-    configureWebDAV,
-    disableWebDAV,
-    setLocale,
-    ensureLoaded
+    ensureLoaded,
+    setLocale
   }
 }

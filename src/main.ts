@@ -6,7 +6,7 @@ import './style.css'
 import './styles/main.css'
 import { i18n } from './i18n'
 import { routes } from './router'
-import { initConfig } from './services/config'
+import databaseService from './services/database'
 import { useSettings } from './stores/settings'
 import { useMembers } from './stores/members'
 import { useTasks } from './stores/tasks'
@@ -20,7 +20,8 @@ const router = createRouter({
 })
 
 async function bootstrap() {
-  await initConfig()
+  // PouchDB 是业务数据主存储，确保所有 store 读取前已初始化
+  await databaseService.initialize('kidspoints')
   
   await Promise.all([
     useSettings().ensureLoaded(),

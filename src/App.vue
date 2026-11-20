@@ -30,19 +30,14 @@ provide('rewardsStore', rewardsStore)
 provide('achievementsStore', achievementsStore)
 provide('settingsStore', settingsStore)
 
-const isWebDAVEnabled = computed(() => {
-  return settingsStore.settings.webdavSync?.enabled === true
-})
-
-const showSyncStatus = computed(() => {
-  return isWebDAVEnabled.value && syncStatus.value !== 'idle'
-})
+// 数据组连上且正在同步/同步完成/出错时显示状态提示
+const showSyncStatus = computed(() => syncStatus.value !== 'idle')
 
 const syncStatusText = computed(() => {
   switch (syncStatus.value) {
-    case 'syncing': return t('webdav.syncing')
-    case 'synced': return t('webdav.synced')
-    case 'error': return t('webdav.error')
+    case 'syncing': return t('sync.syncing')
+    case 'synced': return t('sync.synced')
+    case 'error': return t('sync.error')
     default: return ''
   }
 })
@@ -58,12 +53,12 @@ router.beforeEach((to, _from, next) => {
 const checkAndResetTasks = () => {
   const now = new Date()
   const lastReset = settingsStore.settings.lastDailyReset ? new Date(settingsStore.settings.lastDailyReset) : null
-  
+
   if (!lastReset || now.getDate() !== lastReset.getDate()) {
     tasksStore.resetDailyTasks()
     settingsStore.updateSettings({ lastDailyReset: now.getTime() })
   }
-  
+
   if (!lastReset || (now.getDay() === 1 && now.getDate() !== lastReset.getDate())) {
     tasksStore.resetWeeklyTasks()
   }
@@ -71,73 +66,29 @@ const checkAndResetTasks = () => {
 
 let resetTimer: number
 
-const initializeDatabase = async () => {
-  try {
-    await databaseService.initialize('kidspoints')
-    
-    const webdavConfig = settingsStore.settings.webdavSync
-    if (webdavConfig && webdavConfig.enabled) {
-      await databaseService.configureWebDAV({
-        url: webdavConfig.url,
-        username: webdavConfig.username,
-        password: webdavConfig.password
-      })
-      
-      databaseService.onStatusChange((status) => {
-        syncStatus.value = status
-        if (status === 'error') {
-          syncError.value = t('webdav.syncFailed')
-        } else {
-          syncError.value = null
-        }
-      })
-    }
-  } catch (error) {
-    console.error('Failed to initialize database:', error)
-  }
-}
-
-const performAutoLoad = async () => {
-  const webdavConfig = settingsStore.settings.webdavSync
-  if (webdavConfig && webdavConfig.enabled) {
-    try {
-      syncStatus.value = 'syncing'
-      await databaseService.loadFromWebDAV()
-      syncStatus.value = 'synced'
-      syncError.value = null
-    } catch (error) {
-      console.error('Auto-load failed:', error)
-      syncStatus.value = 'error'
-      syncError.value = t('webdav.loadFailed')
-    }
-  }
-}
-
 onMounted(async () => {
   locale.value = settingsStore.settings.locale
-  
+
   membersStore.loadMembers()
   tasksStore.loadTasks()
   rewardsStore.loadRewards()
   achievementsStore.loadAchievements()
-  
-  await initializeDatabase()
-  
-  if (settingsStore.settings.webdavSync?.enabled) {
-    await performAutoLoad()
-  }
-  
+
+  databaseService.onStatusChange((status) => {
+    syncStatus.value = status
+    if (status === 'error') {
+      syncError.value = t('sync.failed')
+    } else {
+      syncError.value = null
+    }
+  })
+
   checkAndResetTasks()
-  
+
   const now = new Date()
-  const midnight = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    0, 0, 0
-  )
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0)
   const timeUntilMidnight = midnight.getTime() - now.getTime()
-  
+
   resetTimer = setTimeout(() => {
     checkAndResetTasks()
     setInterval(checkAndResetTasks, 24 * 60 * 60 * 1000)
@@ -268,19 +219,5 @@ onUnmounted(() => {
     transform: translateX(0);
     opacity: 1;
   }
-}
-
-.sync-error-msg {
-  position: fixed;
-  top: 70px;
-  right: 20px;
-  background-color: #f8d7da;
-  color: #721c24;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  max-width: 300px;
 }
 </style>

@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import { initConfig, getConfigRepo } from '../services/config'
+import { loadDoc, saveDoc } from '../services/doc-store'
 
 export type AchievementRequirementType = 'taskCount' | 'pointsTotal' | 'rewardsRedeemed' | 'custom'
 
@@ -22,35 +22,17 @@ const achievements = ref<Achievement[]>([])
 let initialized = false
 
 const loadAchievements = async () => {
-  const repo = await initConfig()
   try {
-    const saved = repo.getConfig<Achievement[]>('/achievements')
-    if (saved && Array.isArray(saved)) {
-      achievements.value = saved
-    }
+    const saved = await loadDoc<Achievement[]>('achievements')
+    if (saved && Array.isArray(saved)) achievements.value = saved
   } catch (e) {
-    console.warn('Failed to load achievements from config:', e)
-    const savedAchievements = localStorage.getItem('kidpoints-achievements')
-    if (savedAchievements) {
-      achievements.value = JSON.parse(savedAchievements)
-    }
+    console.warn('Failed to load achievements from PouchDB:', e)
   }
   initialized = true
 }
 
-const saveAchievements = () => {
-  if (!initialized) return
-  try {
-    const repo = getConfigRepo()
-    repo.setConfig('/achievements', achievements.value)
-  } catch (e) {
-    console.warn('Failed to save achievements to config, falling back to localStorage:', e)
-    localStorage.setItem('kidpoints-achievements', JSON.stringify(achievements.value))
-  }
-}
-
 watch(achievements, () => {
-  saveAchievements()
+  if (initialized) void saveDoc('achievements', achievements.value)
 }, { deep: true })
 
 let loadPromise: Promise<void> | null = null
@@ -75,9 +57,7 @@ export function useAchievements() {
 
   const updateAchievement = (id: string, data: Partial<Achievement>) => {
     const index = achievements.value.findIndex(a => a.id === id)
-    if (index !== -1) {
-      achievements.value[index] = { ...achievements.value[index], ...data }
-    }
+    if (index !== -1) achievements.value[index] = { ...achievements.value[index], ...data }
   }
 
   const deleteAchievement = (id: string) => {

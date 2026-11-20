@@ -206,7 +206,8 @@
     "resetConfirm": "Are you ABSOLUTELY sure? All data will be permanently deleted.",
     "logout": "Logout",
     "systemSettings": "System Settings",
-    "dataManagement": "Data Management"
+    "dataManagement": "Data Management",
+    "sync": "Sync"
   },
   "adminLogin": {
     "title": "Parent Login",
@@ -326,5 +327,24 @@
     "loadFailed": "Failed to load config",
     "flushSuccess": "Sync triggered",
     "flushFailed": "Sync failed"
+  },
+  "sync": {
+    "title": "Sync",
+    "description": "Configure a sync backend (WebDAV / Gitee / RemoteStorage) with zen-fs-config. Data lives in local PouchDB and is backed up via the sync group. Once configured, the data group connects and syncs automatically.",
+    "status": "Status",
+    "idle": "Idle",
+    "syncing": "Syncing...",
+    "synced": "Synced",
+    "error": "Error",
+    "dataGroup": "Data group",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "noDataGroup": "Config repo connected. Please create a data sync group and retry.",
+    "connectFailed": "Failed to connect data group",
+    "syncNow": "Sync now",
+    "success": "Sync completed",
+    "failed": "Sync failed: data group not connected or backend unavailable",
+    "notConnectedAction": "Configure and connect a sync backend below first",
+    "configError": "Config error"
   }
 }

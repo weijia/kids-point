@@ -1,5 +1,5 @@
 import { ref, computed, watch } from 'vue'
-import { initConfig, getConfigRepo } from '../services/config'
+import { loadDoc, saveDoc } from '../services/doc-store'
 
 export interface Member {
   id: string
@@ -16,70 +16,29 @@ const currentMemberId = ref<string | null>(null)
 let initialized = false
 
 const loadMembers = async () => {
-  const repo = await initConfig()
   try {
-    const saved = repo.getConfig<Member[]>('/members')
-    if (saved && Array.isArray(saved)) {
-      members.value = saved
-    }
+    const saved = await loadDoc<Member[]>('members')
+    if (saved && Array.isArray(saved)) members.value = saved
   } catch (e) {
-    console.warn('Failed to load members from config:', e)
-    const savedMembers = localStorage.getItem('kidpoints-members')
-    if (savedMembers) {
-      members.value = JSON.parse(savedMembers)
-    }
+    console.warn('Failed to load members from PouchDB:', e)
   }
 
   try {
-    const savedCurrent = repo.getConfig<string>('/current-member')
-    if (savedCurrent) {
-      currentMemberId.value = savedCurrent
-    }
+    const savedCurrent = await loadDoc<string | null>('current-member')
+    if (savedCurrent) currentMemberId.value = savedCurrent
   } catch (e) {
-    const savedCurrentMember = localStorage.getItem('kidpoints-current-member')
-    if (savedCurrentMember) {
-      currentMemberId.value = savedCurrentMember
-    }
+    console.warn('Failed to load current member from PouchDB:', e)
   }
 
   initialized = true
 }
 
-const saveMembers = () => {
-  if (!initialized) return
-  try {
-    const repo = getConfigRepo()
-    repo.setConfig('/members', members.value)
-  } catch (e) {
-    console.warn('Failed to save members to config, falling back to localStorage:', e)
-    localStorage.setItem('kidpoints-members', JSON.stringify(members.value))
-  }
-}
-
-const saveCurrentMember = () => {
-  if (!initialized) return
-  try {
-    const repo = getConfigRepo()
-    if (currentMemberId.value) {
-      repo.setConfig('/current-member', currentMemberId.value)
-    } else {
-      repo.setConfig('/current-member', null)
-    }
-  } catch (e) {
-    if (currentMemberId.value) {
-      localStorage.setItem('kidpoints-current-member', currentMemberId.value)
-    } else {
-      localStorage.removeItem('kidpoints-current-member')
-    }
-  }
-}
-
 watch(members, () => {
-  saveMembers()
+  if (initialized) void saveDoc('members', members.value)
 }, { deep: true })
 
 watch(currentMemberId, () => {
-  saveCurrentMember()
+  if (initialized) void saveDoc('current-member', currentMemberId.value)
 })
 
 const currentMember = computed(() => {
@@ -107,11 +66,7 @@ export function useMembers() {
       redeemedRewards: []
     }
     members.value.push(newMember)
-    
-    if (!currentMemberId.value) {
-      setCurrentMember(newMember.id)
-    }
-    
+    if (!currentMemberId.value) setCurrentMember(newMember.id)
     return newMember
   }
 
@@ -135,9 +90,7 @@ export function useMembers() {
 
   const addPoints = (memberId: string, points: number) => {
     const member = members.value.find(m => m.id === memberId)
-    if (member) {
-      member.points += points
-    }
+    if (member) member.points += points
   }
 
   const deductPoints = (memberId: string, points: number) => {
@@ -164,8 +117,7 @@ export function useMembers() {
   }
 
   const isTaskCompleted = (memberId: string, taskId: string) => {
-    const member = members.value.find(m => m.id === memberId)
-    return member?.completedTasks.includes(taskId) || false
+    return members.value.find(m => m.id === memberId)?.completedTasks.includes(taskId) || false
   }
 
   const redeemReward = (memberId: string, rewardId: string) => {
@@ -176,8 +128,7 @@ export function useMembers() {
   }
 
   const isRewardRedeemed = (memberId: string, rewardId: string) => {
-    const member = members.value.find(m => m.id === memberId)
-    return member?.redeemedRewards.includes(rewardId) || false
+    return members.value.find(m => m.id === memberId)?.redeemedRewards.includes(rewardId) || false
   }
 
   const resetMemberData = () => {

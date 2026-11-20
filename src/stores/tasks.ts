@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import { initConfig, getConfigRepo } from '../services/config'
+import { loadDoc, saveDoc } from '../services/doc-store'
 
 export type TaskFrequency = 'daily' | 'weekly' | 'once'
 
@@ -18,35 +18,17 @@ const tasks = ref<Task[]>([])
 let initialized = false
 
 const loadTasks = async () => {
-  const repo = await initConfig()
   try {
-    const saved = repo.getConfig<Task[]>('/tasks')
-    if (saved && Array.isArray(saved)) {
-      tasks.value = saved
-    }
+    const saved = await loadDoc<Task[]>('tasks')
+    if (saved && Array.isArray(saved)) tasks.value = saved
   } catch (e) {
-    console.warn('Failed to load tasks from config:', e)
-    const savedTasks = localStorage.getItem('kidpoints-tasks')
-    if (savedTasks) {
-      tasks.value = JSON.parse(savedTasks)
-    }
+    console.warn('Failed to load tasks from PouchDB:', e)
   }
   initialized = true
 }
 
-const saveTasks = () => {
-  if (!initialized) return
-  try {
-    const repo = getConfigRepo()
-    repo.setConfig('/tasks', tasks.value)
-  } catch (e) {
-    console.warn('Failed to save tasks to config, falling back to localStorage:', e)
-    localStorage.setItem('kidpoints-tasks', JSON.stringify(tasks.value))
-  }
-}
-
 watch(tasks, () => {
-  saveTasks()
+  if (initialized) void saveDoc('tasks', tasks.value)
 }, { deep: true })
 
 let loadPromise: Promise<void> | null = null
@@ -71,9 +53,7 @@ export function useTasks() {
 
   const updateTask = (id: string, data: Partial<Task>) => {
     const index = tasks.value.findIndex(t => t.id === id)
-    if (index !== -1) {
-      tasks.value[index] = { ...tasks.value[index], ...data }
-    }
+    if (index !== -1) tasks.value[index] = { ...tasks.value[index], ...data }
   }
 
   const deleteTask = (id: string) => {
@@ -81,27 +61,19 @@ export function useTasks() {
   }
 
   const resetDailyTasks = () => {
-    const dailyTaskIds = tasks.value
-      .filter(t => t.frequency === 'daily')
-      .map(t => t.id)
-    
+    const dailyTaskIds = tasks.value.filter(t => t.frequency === 'daily').map(t => t.id)
     localStorage.setItem('kidpoints-daily-reset-tasks', JSON.stringify(dailyTaskIds))
   }
 
   const resetWeeklyTasks = () => {
-    const weeklyTaskIds = tasks.value
-      .filter(t => t.frequency === 'weekly')
-      .map(t => t.id)
-    
+    const weeklyTaskIds = tasks.value.filter(t => t.frequency === 'weekly').map(t => t.id)
     localStorage.setItem('kidpoints-weekly-reset-tasks', JSON.stringify(weeklyTaskIds))
   }
 
-  const getTasksByFrequency = (frequency: TaskFrequency) => {
-    return tasks.value.filter(t => t.frequency === frequency)
-  }
+  const getTasksByFrequency = (frequency: TaskFrequency) => tasks.value.filter(t => t.frequency === frequency)
 
   const getTasksForMember = (memberId: string) => {
-    return tasks.value.filter(t => 
+    return tasks.value.filter(t =>
       t.assignedTo.includes(memberId) || t.assignedTo.length === 0
     )
   }
